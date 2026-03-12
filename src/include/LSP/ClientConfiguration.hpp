@@ -255,11 +255,13 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ClientFormatConfiguration, conve
 enum struct LSPPlatformConfig
 {
     Standard,
-    Roblox
+    Roblox,
+    Lune
 };
 NLOHMANN_JSON_SERIALIZE_ENUM(LSPPlatformConfig, {
                                                     {LSPPlatformConfig::Standard, "standard"},
                                                     {LSPPlatformConfig::Roblox, "roblox"},
+                                                    {LSPPlatformConfig::Lune, "lune"},
                                                 })
 
 struct ClientPlatformConfiguration

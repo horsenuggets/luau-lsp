@@ -109,7 +109,15 @@ std::optional<std::string> readFile(const std::string& name)
     if (read != size_t(length))
         return std::nullopt;
 
-    // LUAU-LSP DEVIATION: We don't remove shebang here, that is handled in TextDocument
+    // LUAU-LSP DEVIATION: Strip shebang so that files with a #! line
+    // are handled correctly in both LSP and CLI analyze paths.
+    if (result.size() >= 2 && result[0] == '#' && result[1] == '!')
+    {
+        if (auto pos = result.find('\n'); pos != std::string::npos)
+            result = result.substr(pos);
+        else
+            result = "\n";
+    }
 
     return result;
 }
