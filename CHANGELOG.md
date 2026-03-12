@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.63.0-horse.1.0] - 2026-03-12
+
+### Added
+
+- Added `--platform lune` option with built-in Lune fork globals (script, task, executable, Color3, Vector2, Vector3, CFrame, NumberRange)
+- Added native shebang (`#!`) handling in CLI analyze mode so files with shebangs no longer produce syntax errors
+
 ## [1.63.0] - 2026-03-01
 
 ### Removed
