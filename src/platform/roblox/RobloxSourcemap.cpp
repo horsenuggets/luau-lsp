@@ -482,6 +482,18 @@ void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base)
         realPathsToSourceNodes.insert_or_assign(*realPath, node);
     }
 
+    // Index source nodes by directory for project.json-based resolution
+    for (const auto& fp : node->filePaths)
+    {
+        auto fpUri = Uri::file(fp);
+        if (endsWith(fpUri.filename(), ".project.json"))
+        {
+            auto dirUri = fileResolver->rootUri.resolvePath(fp);
+            if (auto parent = dirUri.parent())
+                directoryToSourceNodes.insert_or_assign(*parent, node);
+        }
+    }
+
     for (auto& child : node->children)
     {
         child->parent = node;
@@ -496,6 +508,7 @@ void RobloxPlatform::updateSourceNodeMap(const std::string& sourceMapContents)
     sourceNodeAllocator.clear();
     realPathsToSourceNodes.clear();
     virtualPathsToSourceNodes.clear();
+    directoryToSourceNodes.clear();
 
     try
     {
@@ -608,6 +621,41 @@ void RobloxPlatform::handleSourcemapUpdate(Luau::Frontend& frontend, const Luau:
         if (expressiveTypes || forAutocomplete)
             if (auto node = isVirtualPath(name) ? getSourceNodeFromVirtualPath(name) : getSourceNodeFromRealPath(fileResolver->getUri(name)))
                 scope->bindings[Luau::AstName("script")] = Luau::Binding{getSourcemapType(globals, instanceTypes, node.value())};
+
+        // Propagate exported types through Wally wrapper modules.
+        // Wally generates wrapper files like:
+        //   type Package = typeof(require("./inner"))
+        //   return require("./inner") :: Package
+        // These don't re-export the inner module's types, so Fusion.Scope etc. are invisible.
+        // We detect this pattern and copy the inner module's exportedTypeBindings to the wrapper scope.
+        if (auto source = fileResolver->readSource(name))
+        {
+            const auto& src = source->source;
+            auto typeofPos = src.find("typeof(require(");
+            auto returnPos = src.find("return require(");
+            if (typeofPos != std::string::npos && returnPos != std::string::npos)
+            {
+                auto quoteStart = src.find('"', typeofPos);
+                auto quoteEnd = quoteStart != std::string::npos ? src.find('"', quoteStart + 1) : std::string::npos;
+                if (quoteEnd != std::string::npos)
+                {
+                    auto requirePath = src.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
+                    Luau::ModuleInfo context{name};
+                    Luau::TypeCheckLimits limits;
+                    if (auto resolved = resolveStringRequire(&context, requirePath, limits))
+                    {
+                        if (auto innerModule = frontend.moduleResolver.getModule(resolved->name))
+                        {
+                            for (const auto& [typeName, typeFun] : innerModule->exportedTypeBindings)
+                            {
+                                scope->exportedTypeBindings[typeName] = typeFun;
+                            }
+                            wallyReexportSources[name] = resolved->name;
+                        }
+                    }
+                }
+            }
+        }
     };
 }
 

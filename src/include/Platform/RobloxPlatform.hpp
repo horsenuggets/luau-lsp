@@ -68,6 +68,10 @@ private:
     PluginNode* pluginInfo = nullptr;
 
     mutable std::unordered_map<Uri, const SourceNode*, UriHash> realPathsToSourceNodes{};
+    mutable std::unordered_map<Uri, const SourceNode*, UriHash> directoryToSourceNodes{};
+
+    // Maps wrapper module names to the inner module they re-export types from (for Wally wrappers)
+    mutable std::unordered_map<Luau::ModuleName, Luau::ModuleName> wallyReexportSources{};
 
     std::optional<const SourceNode*> getSourceNodeFromVirtualPath(const Luau::ModuleName& name) const;
     std::optional<const SourceNode*> getSourceNodeFromRealPath(const Uri& name) const;
@@ -120,6 +124,17 @@ public:
     Luau::SourceCode::Type sourceCodeTypeFromPath(const Uri& path) const override;
 
     std::optional<std::string> readSourceCode(const Luau::ModuleName& name, const Uri& path) const override;
+
+    std::optional<Luau::ModuleName> getReexportSource(const Luau::ModuleName& wrapperModule) const override
+    {
+        auto it = wallyReexportSources.find(wrapperModule);
+        if (it != wallyReexportSources.end())
+            return it->second;
+        return std::nullopt;
+    }
+
+    std::optional<Luau::ModuleInfo> resolveStringRequire(
+        const Luau::ModuleInfo* context, const std::string& requiredString, const Luau::TypeCheckLimits& limits) override;
 
     std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node, const Luau::TypeCheckLimits& limits) override;
 

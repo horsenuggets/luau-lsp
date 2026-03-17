@@ -1,5 +1,7 @@
 #include "Platform/RobloxPlatform.hpp"
+#include "LSP/ClientConfiguration.hpp"
 #include "LSP/JsonTomlSyntaxParser.hpp"
+#include "LSP/Workspace.hpp"
 
 #include "Luau/TimeTrace.h"
 #include "LuauFileUtils.hpp"
@@ -113,6 +115,82 @@ static std::string mapContext(const std::string& context)
     else if (context == "game/Players/LocalPlayer/StarterGear")
         return "game/StarterPack";
     return context;
+}
+
+std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
+    const Luau::ModuleInfo* context, const std::string& requiredString, const Luau::TypeCheckLimits& limits)
+{
+    if (!context)
+        return std::nullopt;
+
+    auto contextPath = resolveToRealPath(context->name);
+    if (!contextPath)
+        return std::nullopt;
+
+    auto baseUri = contextPath->parent();
+    if (!baseUri)
+        return std::nullopt;
+
+    ClientConfiguration clientConfig;
+    if (fileResolver->client)
+        clientConfig = fileResolver->client->getConfiguration(fileResolver->rootUri);
+
+    if (isInitLuauFile(*contextPath) && !clientConfig.require.useOriginalRequireByStringSemantics)
+    {
+        baseUri = baseUri->parent();
+        if (!baseUri)
+            return std::nullopt;
+    }
+
+    auto fileUri = baseUri->resolvePath(requiredString);
+
+    auto luauConfig = fileResolver->getConfig(context->name, limits);
+    if (auto aliasedPath = resolveAlias(requiredString, luauConfig, *contextPath->parent()))
+    {
+        fileUri = aliasedPath.value();
+    }
+
+    // Handle "init.luau" files in a directory
+    if (fileUri.isDirectory())
+    {
+        auto initLuau = fileUri.resolvePath("init.luau");
+        auto initLua = fileUri.resolvePath("init.lua");
+
+        if (initLuau.exists() || initLua.exists())
+        {
+            fileUri = fileUri.resolvePath("init");
+        }
+        else if (auto it = directoryToSourceNodes.find(fileUri); it != directoryToSourceNodes.end())
+        {
+            // Use the sourcemap to resolve through project.json $path redirects
+            if (auto scriptPath = it->second->getScriptFilePath())
+            {
+                fileUri = fileResolver->rootUri.resolvePath(*scriptPath);
+                return Luau::ModuleInfo{fileResolver->getModuleName(fileUri)};
+            }
+            else
+            {
+                fileUri = fileUri.resolvePath("init");
+            }
+        }
+        else
+        {
+            fileUri = fileUri.resolvePath("init");
+        }
+    }
+
+    // Add file endings
+    if (fileUri.extension() != ".luau" && fileUri.extension() != ".lua")
+    {
+        auto fileUriWithExtension = fileUri;
+        fileUriWithExtension.path = fileUri.path + ".luau";
+        if (!fileUriWithExtension.exists())
+            fileUri.path += ".lua";
+        else
+            fileUri.path = fileUriWithExtension.path;
+    }
+
+    return Luau::ModuleInfo{fileResolver->getModuleName(fileUri)};
 }
 
 std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node, const Luau::TypeCheckLimits& limits)

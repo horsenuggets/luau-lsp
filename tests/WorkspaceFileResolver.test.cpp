@@ -485,6 +485,143 @@ TEST_CASE_FIXTURE(Fixture, "support_config_luau")
     CHECK(fooConfig.aliases.find("test"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "string_require_resolves_directory_with_project_json_via_sourcemap")
+{
+    auto mainPath = tempDir.touch_child("project/main.luau");
+    auto initPath = tempDir.touch_child("project/mymodule/src/init.luau");
+    tempDir.write_child("project/mymodule/default.project.json", R"({"name": "mymodule", "tree": {"$path": "src"}})");
+
+    auto sourcemap = std::string(R"(
+    {
+        "name": "Game",
+        "className": "DataModel",
+        "children": [{
+            "name": "ReplicatedStorage",
+            "className": "ReplicatedStorage",
+            "children": [{
+                "name": "mymodule",
+                "className": "ModuleScript",
+                "filePaths": ["{initPath}", "{projectJsonPath}"]
+            }]
+        }]
+    }
+    )");
+    replace(sourcemap, "{initPath}", initPath);
+    replace(sourcemap, "{projectJsonPath}", tempDir.path() + "/project/mymodule/default.project.json");
+    loadSourcemap(sourcemap);
+
+    Luau::ModuleInfo baseContext{mainPath};
+    auto resolved = workspace.platform->resolveStringRequire(&baseContext, "./mymodule", workspace.limits);
+
+    REQUIRE(resolved.has_value());
+    // The module name is a virtual path since the sourcemap maps it
+    auto realPath = workspace.platform->resolveToRealPath(resolved->name);
+    REQUIRE(realPath.has_value());
+    CHECK_EQ(*realPath, Uri::file(initPath));
+}
+
+TEST_CASE_FIXTURE(Fixture, "string_require_prefers_init_luau_over_sourcemap")
+{
+    auto mainPath = tempDir.touch_child("project/main.luau");
+    auto initPath = tempDir.touch_child("project/mymodule/init.luau");
+    auto srcInitPath = tempDir.touch_child("project/mymodule/src/init.luau");
+    tempDir.write_child("project/mymodule/default.project.json", R"({"name": "mymodule", "tree": {"$path": "src"}})");
+
+    auto sourcemap = std::string(R"(
+    {
+        "name": "Game",
+        "className": "DataModel",
+        "children": [{
+            "name": "ReplicatedStorage",
+            "className": "ReplicatedStorage",
+            "children": [{
+                "name": "mymodule",
+                "className": "ModuleScript",
+                "filePaths": ["{srcInitPath}", "{projectJsonPath}"]
+            }]
+        }]
+    }
+    )");
+    replace(sourcemap, "{srcInitPath}", srcInitPath);
+    replace(sourcemap, "{projectJsonPath}", tempDir.path() + "/project/mymodule/default.project.json");
+    loadSourcemap(sourcemap);
+
+    Luau::ModuleInfo baseContext{mainPath};
+    auto resolved = workspace.platform->resolveStringRequire(&baseContext, "./mymodule", workspace.limits);
+
+    REQUIRE(resolved.has_value());
+    // init.luau exists, so it should resolve directly to the file path (not via sourcemap)
+    CHECK(endsWith(resolved->name, "/project/mymodule/init.luau"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "string_require_falls_through_without_sourcemap_entry")
+{
+    auto mainPath = tempDir.touch_child("project/main.luau");
+    // Directory exists but has no init.luau and no sourcemap entry
+    tempDir.touch_child("project/mymodule/something.luau");
+
+    loadSourcemap(R"(
+    {
+        "name": "Game",
+        "className": "DataModel",
+        "children": []
+    }
+    )");
+
+    Luau::ModuleInfo baseContext{mainPath};
+    auto resolved = workspace.platform->resolveStringRequire(&baseContext, "./mymodule", workspace.limits);
+
+    REQUIRE(resolved.has_value());
+    // Falls through to default init behavior (even though init.luau doesn't exist)
+    bool endsWithInit = endsWith(resolved->name, "/project/mymodule/init.luau") || endsWith(resolved->name, "/project/mymodule/init.lua");
+    CHECK(endsWithInit);
+}
+
+TEST_CASE_FIXTURE(Fixture, "string_require_resolves_wally_package_via_sourcemap")
+{
+    // Simulates the Wally package structure: Packages/_Index/author_pkg@1.0.0/pkg/src/init.luau
+    auto mainPath = tempDir.touch_child("Packages/Fusion.luau");
+    auto pkgInitPath = tempDir.touch_child("Packages/_Index/elttob_fusion@0.3.0/fusion/src/init.luau");
+    auto pkgProjectJson = tempDir.write_child(
+        "Packages/_Index/elttob_fusion@0.3.0/fusion/default.project.json", R"({"name": "fusion", "tree": {"$path": "src"}})");
+
+    auto sourcemap = std::string(R"(
+    {
+        "name": "Game",
+        "className": "DataModel",
+        "children": [{
+            "name": "Packages",
+            "className": "Folder",
+            "children": [{
+                "name": "_Index",
+                "className": "Folder",
+                "children": [{
+                    "name": "elttob_fusion@0.3.0",
+                    "className": "Folder",
+                    "children": [{
+                        "name": "fusion",
+                        "className": "ModuleScript",
+                        "filePaths": ["{initPath}", "{projectJsonPath}"]
+                    }]
+                }]
+            }]
+        }]
+    }
+    )");
+    replace(sourcemap, "{initPath}", pkgInitPath);
+    replace(sourcemap, "{projectJsonPath}", pkgProjectJson);
+    loadSourcemap(sourcemap);
+
+    Luau::ModuleInfo baseContext{mainPath};
+    auto resolved = workspace.platform->resolveStringRequire(&baseContext, "./_Index/elttob_fusion@0.3.0/fusion", workspace.limits);
+
+    REQUIRE(resolved.has_value());
+    // The module name is a virtual path since the sourcemap maps it
+    auto realPath = workspace.platform->resolveToRealPath(resolved->name);
+    REQUIRE(realPath.has_value());
+    CHECK_EQ(*realPath, Uri::file(pkgInitPath));
+}
+
 #ifndef _WIN32
 TEST_CASE_FIXTURE(Fixture, "string_require_resolves_symlinked_file")
 {
