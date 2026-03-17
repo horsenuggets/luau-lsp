@@ -189,6 +189,9 @@ if (LSP_BUILD_ASAN)
     endif ()
 endif ()
 
+# Embed Roblox type definitions at configure time
+include(cmake/EmbedRobloxTypes.cmake)
+
 set(EXTERN_INCLUDES extern/json/include extern/glob/include extern/argparse/include extern/toml/include extern/ryml/include)
 
 target_compile_features(Luau.LanguageServer PUBLIC cxx_std_17)
@@ -202,13 +205,13 @@ target_link_libraries(Luau.LanguageServer PRIVATE Luau.Ast Luau.Analysis Luau.Co
 set_target_properties(Luau.LanguageServer.CLI PROPERTIES OUTPUT_NAME luau-lsp)
 target_compile_features(Luau.LanguageServer.CLI PUBLIC cxx_std_17)
 target_compile_options(Luau.LanguageServer.CLI PRIVATE ${LUAU_LSP_OPTIONS})
-target_include_directories(Luau.LanguageServer.CLI PRIVATE src/include)
+target_include_directories(Luau.LanguageServer.CLI PRIVATE src/include ${CMAKE_BINARY_DIR})
 target_include_directories(Luau.LanguageServer.CLI SYSTEM PRIVATE ${EXTERN_INCLUDES})
 target_link_libraries(Luau.LanguageServer.CLI PRIVATE Luau.LanguageServer Luau.Analysis)
 
 target_compile_features(Luau.LanguageServer.Test PRIVATE cxx_std_17)
 target_compile_options(Luau.LanguageServer.Test PRIVATE ${LUAU_LSP_OPTIONS})
-target_include_directories(Luau.LanguageServer.Test PRIVATE tests)
+target_include_directories(Luau.LanguageServer.Test PRIVATE tests ${CMAKE_BINARY_DIR})
 target_include_directories(Luau.LanguageServer.Test SYSTEM PRIVATE ${EXTERN_INCLUDES} extern/doctest)
 target_link_libraries(Luau.LanguageServer.Test PRIVATE Luau.Ast Luau.Analysis Luau.LanguageServer)
 

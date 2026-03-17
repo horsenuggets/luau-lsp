@@ -15,6 +15,7 @@
 #include "LSP/LuauExt.hpp"
 #include "LSP/WorkspaceFileResolver.hpp"
 #include "glob/match.h"
+#include "RobloxTypes.hpp"
 #include <iostream>
 #include <memory>
 #include <vector>
@@ -543,10 +544,24 @@ int startAnalyze(const argparse::ArgumentParser& program)
     if (!FFlag::LuauSolverV2)
         Luau::registerBuiltinGlobals(frontend, frontend.globalsForAutocomplete);
 
+    // Auto-load built-in Roblox definitions when --platform roblox is used and no definitions are provided
     if (client.configuration.platform.type == LSPPlatformConfig::Roblox && definitionsPaths.empty())
     {
-        fprintf(stderr, "WARNING: --platform is set to 'roblox' but no definitions files are provided. 'luau-lsp analyze' does not download "
-                        "definitions files; use `--platform=standard` to silence\n");
+        if (ROBLOX_GLOBAL_TYPES != nullptr)
+        {
+            auto loadResult = types::registerDefinitions(frontend, frontend.globals, "@roblox", std::string(ROBLOX_GLOBAL_TYPES));
+            if (!loadResult.success)
+            {
+                fprintf(stderr, "Failed to load built-in Roblox definitions\n");
+                return 1;
+            }
+            platform->mutateRegisteredDefinitions(frontend.globals, types::parseDefinitionsFileMetadata(std::string(ROBLOX_GLOBAL_TYPES)));
+        }
+        else
+        {
+            fprintf(stderr, "WARNING: --platform is set to 'roblox' but no definitions files are provided and no built-in definitions are "
+                            "available; use `--platform=standard` to silence\n");
+        }
     }
 
     // Load built-in Lune global definitions when --platform lune is used
