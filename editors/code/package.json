@@ -3,7 +3,7 @@
   "displayName": "Luau Language Server",
   "description": "A Language Server Client for Luau",
   "author": "JohnnyMorganz",
-  "publisher": "JohnnyMorganz",
+  "publisher": "horsenuggets",
   "license": "MIT",
   "icon": "assets/icon.png",
   "homepage": "https://github.com/JohnnyMorganz/luau-lsp",
