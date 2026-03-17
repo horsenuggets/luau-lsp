@@ -171,8 +171,26 @@ lsp::DefinitionResult WorkspaceFolder::gotoDefinition(const lsp::DefinitionParam
                 if (it == importedModule->exportedTypeBindings.end() || !it->second.definitionLocation)
                     return result;
 
-                referenceTextDocument = fileResolver.getOrCreateTextDocumentFromModuleName(*importedName);
-                location = *it->second.definitionLocation;
+                // Check if this module is a Wally wrapper that re-exports types from an inner module
+                auto resolvedModuleName = *importedName;
+                if (auto reexportSource = platform->getReexportSource(*importedName))
+                {
+                    auto innerModule = getModule(*reexportSource, /* forAutocomplete: */ true);
+                    if (innerModule)
+                    {
+                        auto innerIt = innerModule->exportedTypeBindings.find(reference->name.value);
+                        if (innerIt != innerModule->exportedTypeBindings.end() && innerIt->second.definitionLocation)
+                        {
+                            resolvedModuleName = *reexportSource;
+                            location = *innerIt->second.definitionLocation;
+                        }
+                    }
+                }
+
+                if (!location)
+                    location = *it->second.definitionLocation;
+
+                referenceTextDocument = fileResolver.getOrCreateTextDocumentFromModuleName(resolvedModuleName);
             }
             else
                 return result;
