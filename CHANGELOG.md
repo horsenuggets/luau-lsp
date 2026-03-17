@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.63.0-horse.1.1] - 2026-03-17
+
+### Added
+
+- Resolve string requires through Rojo sourcemap when directories use `default.project.json` `$path` redirects (e.g., Wally packages like Fusion)
+- Propagate exported types through Wally wrapper modules so `Fusion.Scope`, `Fusion.UsedAs`, etc. resolve correctly
+- GotoDefinition follows through Wally wrappers to the inner module's actual type declarations
+- Embed Roblox PluginSecurity type definitions in the analyze CLI so `--definitions` is no longer required with `--platform=roblox`
+
+### Changed
+
+- Improved sourcemap generation error messages with ANSI code stripping and clearer Rojo-not-found diagnostics
+
 ## [1.63.0-horse.1.0] - 2026-03-12
 
 ### Added
