@@ -234,6 +234,7 @@ const startSourcemapGeneration = async (
         args.push("--watch");
       }
 
+      loggingFunc(`[Sourcemap] Running: ${rojoPath} ${args.join(" ")} (cwd: ${cwd})`);
       childProcess = spawn(rojoPath, args, { cwd });
     }
 
@@ -242,8 +243,15 @@ const startSourcemapGeneration = async (
       stderr += data;
     });
 
-    childProcess.on("error", (err) => {
-      stderr += err.message;
+    childProcess.on("error", (err: NodeJS.ErrnoException) => {
+      const cmd = customGeneratorCommand ?? config.get<string>("rojoPath") ?? "rojo";
+      if (err.code === "ENOENT") {
+        loggingFunc(`[Sourcemap] Command not found: "${cmd}"`);
+        stderr += `ENOENT: Command not found: ${cmd}`;
+      } else {
+        loggingFunc(`[Sourcemap] Process error: ${err.message} (code: ${err.code})`);
+        stderr += err.message;
+      }
     });
 
     childProcess.on("close", (code, signal) => {
@@ -254,29 +262,37 @@ const startSourcemapGeneration = async (
         let output = `Failed to update sourcemap for ${workspaceFolder.name}: `;
         let options = ["Retry"];
 
+        // Strip ANSI escape codes from stderr for cleaner display
+        const cleanStderr = stderr.replace(
+          /\x1b\[[0-9;]*m/g,
+          "",
+        ).trim();
+
         if (customGeneratorCommand) {
-          output += stderr;
-          if (stderr === "") {
+          output += cleanStderr;
+          if (cleanStderr === "") {
             output += "<no output>";
           }
           options.push("Configure Settings");
         } else {
           if (
-            stderr.includes("Found argument 'sourcemap' which wasn't expected")
+            cleanStderr.includes("Found argument 'sourcemap' which wasn't expected")
           ) {
             output +=
               "Your Rojo version doesn't have sourcemap support. Upgrade to Rojo v7.3.0+";
           } else if (
-            stderr.includes("Found argument '--watch' which wasn't expected")
+            cleanStderr.includes("Found argument '--watch' which wasn't expected")
           ) {
             output +=
               "Your Rojo version doesn't have sourcemap watching support. Upgrade to Rojo v7.3.0+";
           } else if (
-            stderr.includes("is not recognized") ||
-            stderr.includes("ENOENT")
+            cleanStderr.includes("is not recognized") ||
+            cleanStderr.includes("ENOENT") ||
+            cleanStderr.includes("No such file or directory")
           ) {
+            const rojoPath = config.get<string>("rojoPath") ?? "rojo";
             output +=
-              "Rojo not found. Configure your Rojo path in settings, or use the Studio Plugin for DataModel info instead";
+              `Rojo not found at "${rojoPath}". Install Rojo, configure the path in settings, or use the Studio Plugin instead`;
             if (
               !vscode.workspace
                 .getConfiguration("luau-lsp.plugin")
@@ -286,7 +302,7 @@ const startSourcemapGeneration = async (
             }
             options.push("Configure Settings");
           } else {
-            output += stderr;
+            output += cleanStderr || `Process exited with code ${code}`;
           }
         }
 
