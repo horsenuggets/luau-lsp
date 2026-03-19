@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.63.0-horse.1.3] - 2026-03-19
+
+### Fixed
+
+- Propagate export types through `typeof(require())` redirect patterns used by Wally package manager, fixing "Unknown type" errors when accessing types like `Fusion.Scope` through Wally redirect files
+
 ## [1.63.0-horse.1.2] - 2026-03-17
 
 ### Added
