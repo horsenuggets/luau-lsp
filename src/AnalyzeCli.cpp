@@ -273,6 +273,12 @@ FilePathInformation getFilePath(const WorkspaceFileResolver* fileResolver, const
 static bool reportError(
     const Luau::Frontend& frontend, ReportFormat format, const Luau::TypeError& error, std::vector<std::string>& ignoreGlobPatterns)
 {
+    // The type checker can produce errors with empty module names for
+    // internal type artifacts. Skip these since they don't correspond
+    // to any real source file.
+    if (error.moduleName.empty())
+        return false;
+
     auto* fileResolver = static_cast<WorkspaceFileResolver*>(frontend.fileResolver);
     auto [uri, relativePath] = getFilePath(fileResolver, error.moduleName);
 
