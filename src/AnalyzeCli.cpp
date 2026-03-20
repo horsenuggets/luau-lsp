@@ -465,6 +465,13 @@ int startAnalyze(const argparse::ArgumentParser& program)
         }
     }
 
+    // CLI flags override settings file values
+    if (program.get<bool>("--enable-new-solver"))
+    {
+        client.configuration.fflags.enableNewSolver = true;
+        FFlag::LuauSolverV2.value = true;
+    }
+
     if (auto filesArg = program.present<std::vector<std::string>>("files"))
         files = getFilesToAnalyze(*filesArg, ignoreGlobPatterns);
 

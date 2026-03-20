@@ -251,6 +251,10 @@ int main(int argc, char** argv)
     analyze_command.add_argument("--base-luaurc").help("path to a .luaurc file which acts as the base default configuration").metavar("PATH");
     analyze_command.add_argument("--platform").help("platform-specific support features").choices("standard", "roblox", "lune");
     analyze_command.add_argument("--settings").help("path to LSP-style settings").metavar("PATH");
+    analyze_command.add_argument("--enable-new-solver")
+        .help("enable the new Luau type solver (LuauSolverV2)")
+        .default_value(false)
+        .implicit_value(true);
     analyze_command.add_argument("files").help("files to perform analysis on").remaining();
 
     // Language server arguments

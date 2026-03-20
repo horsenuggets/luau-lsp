@@ -108,6 +108,57 @@ TEST_CASE_FIXTURE(Fixture, "analysis_relative_file_paths")
     CHECK_EQ(getFilePath(&workspace.fileResolver, tempDir.touch_child("folder/file.luau")).relativePath, "folder/file.luau");
 }
 
+TEST_CASE("enable_new_solver_cli_flag")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+
+    argparse::ArgumentParser program("test");
+    program.set_assign_chars(":=");
+    program.add_argument("--enable-new-solver")
+        .default_value(false)
+        .implicit_value(true);
+
+    std::vector<std::string> arguments{"", "--enable-new-solver"};
+    program.parse_args(arguments);
+
+    CHECK(program.get<bool>("--enable-new-solver"));
+}
+
+TEST_CASE("enable_new_solver_cli_flag_default_false")
+{
+    argparse::ArgumentParser program("test");
+    program.set_assign_chars(":=");
+    program.add_argument("--enable-new-solver")
+        .default_value(false)
+        .implicit_value(true);
+
+    std::vector<std::string> arguments{""};
+    program.parse_args(arguments);
+
+    CHECK_FALSE(program.get<bool>("--enable-new-solver"));
+}
+
+TEST_CASE("enable_new_solver_cli_flag_overrides_settings_file")
+{
+    ScopedFastFlag sff{FFlag::LuauSolverV2, false};
+
+    CliClient client;
+    std::vector<std::string> ignoreGlobs;
+    std::unordered_map<std::string, std::string> definitionPaths;
+
+    // Settings file does not enable new solver
+    auto configFile = R"({ "luau-lsp.fflags.enableNewSolver": false })";
+    applySettings(configFile, client, ignoreGlobs, definitionPaths);
+    CHECK_FALSE(FFlag::LuauSolverV2);
+
+    // CLI flag override takes precedence
+    client.configuration.fflags.enableNewSolver = true;
+    FFlag::LuauSolverV2.value = true;
+
+    CHECK(FFlag::LuauSolverV2);
+    CHECK(client.configuration.fflags.enableNewSolver);
+}
+
 TEST_CASE("parse_definitions_files_handles_new_syntax")
 {
     argparse::ArgumentParser program("test");
