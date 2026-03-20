@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Add `--enable-new-solver` CLI flag to `luau-lsp analyze` for enabling the new Luau type solver (LuauSolverV2) without needing a settings file
 
+### Fixed
+
+- Skip type errors with empty module names that produced confusing `../../../..` paths in analyze output
+
 ## [1.63.0-horse.1.3] - 2026-03-19
 
 ### Fixed
