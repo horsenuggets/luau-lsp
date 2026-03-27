@@ -17,7 +17,6 @@
 local fs = require("@lune/fs")
 local net = require("@lune/net")
 local process = require("@lune/process")
-local task = require("@lune/task")
 
 local ROBLOX_API_KEY = assert(process.env.ROBLOX_API_KEY, "Missing ENV variable: ROBLOX_API_KEY")
 local UNIVERSE_ID = 6894392979
