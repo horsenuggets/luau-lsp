@@ -49,4 +49,5 @@ trace.json
 *.out
 
 # Python venvs
-.venvTODO.md
+.venv
+/TODO.md
