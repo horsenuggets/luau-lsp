@@ -38,6 +38,7 @@ declare debug: {
     setmemorycategory: (tag: string) -> (),
     resetmemorycategory: () -> (),
     getcoverage: <A..., R...>(fn: (A...) -> R...) -> { { Function: string, LineDefined: number, Depth: number, Hits: {number} } },
+    iscoverageenabled: () -> boolean,
 }
 
 declare utf8: {
