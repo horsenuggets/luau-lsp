@@ -27,7 +27,7 @@ const setupStudioPlugin = async (client: LanguageClient | undefined) => {
 };
 
 const globalTypesEndpointForSecurityLevel = (securityLevel: string) => {
-  return `https://luau-lsp.pages.dev/type-definitions/globalTypes.${securityLevel}.d.luau`;
+  return `https://raw.githubusercontent.com/horsenuggets/luau-lsp/main/scripts/globalTypes.${securityLevel}.d.luau`;
 };
 
 const globalTypesUri = (
