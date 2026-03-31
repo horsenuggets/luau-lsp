@@ -1,6 +1,6 @@
 [submodule "luau"]
 	path = luau
-	url = https://github.com/horsenuggets/luau.git
+	url = git@github.com:horsenuggets/luau.git
 [submodule "extern/sentry-native"]
 	path = extern/sentry-native
-	url = https://github.com/getsentry/sentry-native.git
+	url = git@github.com:getsentry/sentry-native.git
