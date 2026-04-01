@@ -13,6 +13,8 @@ let pluginServer: Server | undefined = undefined;
 
 const API_DOCS = "https://luau-lsp.pages.dev/api-docs/en-us.json";
 const LUAU_API_DOCS = "https://luau-lsp.pages.dev/api-docs/luau-en-us.json";
+const COVERAGE_DOCS =
+  "https://raw.githubusercontent.com/horsenuggets/luau-lsp/main/scripts/coverage-docs.json";
 const STUDIO_PLUGIN_URL =
   "https://www.roblox.com/library/10913122509/Luau-Language-Server-Companion";
 
@@ -56,6 +58,10 @@ const apiDocsUri = (context: vscode.ExtensionContext) => {
 
 const luauApiDocsUri = (context: vscode.ExtensionContext) => {
   return vscode.Uri.joinPath(context.globalStorageUri, "luau-api-docs.json");
+};
+
+const coverageDocsUri = (context: vscode.ExtensionContext) => {
+  return vscode.Uri.joinPath(context.globalStorageUri, "coverage-docs.json");
 };
 
 const getRojoProjectFile = async (
@@ -234,7 +240,9 @@ const startSourcemapGeneration = async (
         args.push("--watch");
       }
 
-      loggingFunc(`[Sourcemap] Running: ${rojoPath} ${args.join(" ")} (cwd: ${cwd})`);
+      loggingFunc(
+        `[Sourcemap] Running: ${rojoPath} ${args.join(" ")} (cwd: ${cwd})`,
+      );
       childProcess = spawn(rojoPath, args, { cwd });
     }
 
@@ -244,12 +252,15 @@ const startSourcemapGeneration = async (
     });
 
     childProcess.on("error", (err: NodeJS.ErrnoException) => {
-      const cmd = customGeneratorCommand ?? config.get<string>("rojoPath") ?? "rojo";
+      const cmd =
+        customGeneratorCommand ?? config.get<string>("rojoPath") ?? "rojo";
       if (err.code === "ENOENT") {
         loggingFunc(`[Sourcemap] Command not found: "${cmd}"`);
         stderr += `ENOENT: Command not found: ${cmd}`;
       } else {
-        loggingFunc(`[Sourcemap] Process error: ${err.message} (code: ${err.code})`);
+        loggingFunc(
+          `[Sourcemap] Process error: ${err.message} (code: ${err.code})`,
+        );
         stderr += err.message;
       }
     });
@@ -263,10 +274,7 @@ const startSourcemapGeneration = async (
         let options = ["Retry"];
 
         // Strip ANSI escape codes from stderr for cleaner display
-        const cleanStderr = stderr.replace(
-          /\x1b\[[0-9;]*m/g,
-          "",
-        ).trim();
+        const cleanStderr = stderr.replace(/\x1b\[[0-9;]*m/g, "").trim();
 
         if (customGeneratorCommand) {
           output += cleanStderr;
@@ -276,12 +284,16 @@ const startSourcemapGeneration = async (
           options.push("Configure Settings");
         } else {
           if (
-            cleanStderr.includes("Found argument 'sourcemap' which wasn't expected")
+            cleanStderr.includes(
+              "Found argument 'sourcemap' which wasn't expected",
+            )
           ) {
             output +=
               "Your Rojo version doesn't have sourcemap support. Upgrade to Rojo v7.3.0+";
           } else if (
-            cleanStderr.includes("Found argument '--watch' which wasn't expected")
+            cleanStderr.includes(
+              "Found argument '--watch' which wasn't expected",
+            )
           ) {
             output +=
               "Your Rojo version doesn't have sourcemap watching support. Upgrade to Rojo v7.3.0+";
@@ -291,8 +303,7 @@ const startSourcemapGeneration = async (
             cleanStderr.includes("No such file or directory")
           ) {
             const rojoPath = config.get<string>("rojoPath") ?? "rojo";
-            output +=
-              `Rojo not found at "${rojoPath}". Install Rojo, configure the path in settings, or use the Studio Plugin instead`;
+            output += `Rojo not found at "${rojoPath}". Install Rojo, configure the path in settings, or use the Studio Plugin instead`;
             if (
               !vscode.workspace
                 .getConfiguration("luau-lsp.plugin")
@@ -581,13 +592,17 @@ export const preLanguageServerStart = async (
           outputUri: globalTypesUri(context, securityLevel, "Prod"),
         },
       },
-      documentation: [{ url: API_DOCS, outputUri: apiDocsUri(context) }],
+      documentation: [
+        { url: API_DOCS, outputUri: apiDocsUri(context) },
+        { url: COVERAGE_DOCS, outputUri: coverageDocsUri(context) },
+      ],
     };
   } else {
     return {
       definitions: undefined,
       documentation: [
         { url: LUAU_API_DOCS, outputUri: luauApiDocsUri(context) },
+        { url: COVERAGE_DOCS, outputUri: coverageDocsUri(context) },
       ],
     };
   }
