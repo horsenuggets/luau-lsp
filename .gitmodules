@@ -1,9 +1,9 @@
-[submodule "luau"]
-	path = luau
-	url = git@github.com:horsenuggets/luau.git
 [submodule "extern/sentry-native"]
 	path = extern/sentry-native
 	url = git@github.com:getsentry/sentry-native.git
+[submodule "luau"]
+	path = luau
+	url = git@github.com:horsenuggets/luau.git
 [submodule "Submodules/luau-cicd"]
 	path = submodules/luau-cicd
 	url = git@github.com:horsenuggets/luau-cicd.git
