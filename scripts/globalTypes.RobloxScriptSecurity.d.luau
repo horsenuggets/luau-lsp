@@ -37,7 +37,9 @@ declare debug: {
     getmemorycategory: () -> string,
     setmemorycategory: (tag: string) -> (),
     resetmemorycategory: () -> (),
-    getcoverage: <A..., R...>(fn: (A...) -> R...) -> { { Function: string, LineDefined: number, Depth: number, Hits: {number} } },
+    --- Returns code coverage data for a function or script. Each entry contains the function name, line defined, nesting depth, and per-line hit counts (-1 = non-executable, 0 = not hit, >0 = hit count). Coverage must be enabled in the runtime.
+    getcoverage: (<A..., R...>(fn: (A...) -> R...) -> { { Function: string, LineDefined: number, Depth: number, Hits: {number} } }) & ((script: any) -> { { Function: string, LineDefined: number, Depth: number, Hits: {number} } }),
+    --- Returns whether code coverage instrumentation is currently enabled. In Lune, coverage is enabled by default. Set LUNE_COVERAGE=0 to disable.
     iscoverageenabled: () -> boolean,
 }
 
