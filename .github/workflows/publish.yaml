@@ -1,0 +1,170 @@
+name: Publish release
+
+on:
+  push:
+    branches:
+      - release
+
+env:
+  MACOSX_DEPLOYMENT_TARGET: "10.15"
+
+jobs:
+  init:
+    name: Initialize release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version and changelog
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
+          CHANGELOG=$(awk -v ver="\`$VERSION\`" '
+            /^## / {
+              if (found) exit
+              if ($2 == ver) found=1
+              next
+            }
+            found { print }
+          ' CHANGELOG.md | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | sed '/^$/N;/^\n$/d')
+
+          echo "$CHANGELOG" > /tmp/changelog.txt
+
+      - name: Upload changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: /tmp/changelog.txt
+
+  build:
+    name: Build ${{ matrix.artifact-name }}
+    needs: [init]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact-name: luau-lsp-win64
+
+          - os: ubuntu-22.04
+            artifact-name: luau-lsp-linux-x86_64
+
+          - os: ubuntu-22.04-arm
+            artifact-name: luau-lsp-linux-arm64
+
+          - os: macos-latest
+            artifact-name: luau-lsp-macos
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build server
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DLSP_STATIC_CRT:BOOL=ON
+          cmake --build . --config RelWithDebInfo --target Luau.LanguageServer.CLI -j 3
+
+      - name: (macOS) Strip debug symbols
+        if: matrix.os == 'macos-latest'
+        run: strip -S build/luau-lsp
+
+      - name: (Linux) Strip debug symbols
+        if: matrix.os == 'ubuntu-22.04' || matrix.os == 'ubuntu-22.04-arm'
+        run: objcopy --strip-debug build/luau-lsp
+
+      - name: Create release archive
+        shell: bash
+        run: |
+          mkdir -p staging dist
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "build/RelWithDebInfo/luau-lsp.exe" staging/
+            cd staging
+            7z a ../dist/luau-lsp.zip *
+          else
+            cp "build/luau-lsp" staging/
+            cd staging
+            zip ../dist/luau-lsp.zip *
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: dist/luau-lsp.zip
+
+  build-extension:
+    name: Build extension
+    needs: [init]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: editors/code
+
+      - name: Package extension
+        run: npx @vscode/vsce package
+        working-directory: editors/code
+
+      - name: Upload extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: vscode-extension
+          path: editors/code/*.vsix
+
+  release-github:
+    name: Create GitHub release
+    needs: [init, build, build-extension]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          for dir in artifacts/luau-lsp-*; do
+            name=$(basename "$dir")
+            cp "$dir/luau-lsp.zip" "release-assets/$name.zip"
+          done
+          cp artifacts/vscode-extension/*.vsix release-assets/
+
+      - name: Create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ needs.init.outputs.tag }}
+          git push origin ${{ needs.init.outputs.tag }}
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ${{ needs.init.outputs.tag }} \
+            --title "${{ needs.init.outputs.tag }}" \
+            --notes-file artifacts/changelog/changelog.txt \
+            release-assets/*

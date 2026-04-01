@@ -4,9 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## `Unreleased`
 
-## [1.63.0-horse.1.4] - 2026-03-19
+## `1.63.0-horse.1.4`
 
 ### Added
 
@@ -16,19 +16,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Skip type errors with empty module names that produced confusing `../../../..` paths in analyze output
 
-## [1.63.0-horse.1.3] - 2026-03-19
+## `1.63.0-horse.1.3`
 
 ### Fixed
 
 - Propagate export types through `typeof(require())` redirect patterns used by Wally package manager, fixing "Unknown type" errors when accessing types like `Fusion.Scope` through Wally redirect files
 
-## [1.63.0-horse.1.2] - 2026-03-17
+## `1.63.0-horse.1.2`
 
 ### Added
 
 - Add `warn` global to Lune platform type definitions
 
-## [1.63.0-horse.1.1] - 2026-03-17
+## `1.63.0-horse.1.1`
 
 ### Added
 
@@ -41,14 +41,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Improved sourcemap generation error messages with ANSI code stripping and clearer Rojo-not-found diagnostics
 
-## [1.63.0-horse.1.0] - 2026-03-12
+## `1.63.0-horse.1.0`
 
 ### Added
 
 - Added `--platform lune` option with built-in Lune fork globals (script, task, executable, Color3, Vector2, Vector3, CFrame, NumberRange)
 - Added native shebang (`#!`) handling in CLI analyze mode so files with shebangs no longer produce syntax errors
 
-## [1.63.0] - 2026-03-01
+## `1.63.0`
 
 ### Removed
 
@@ -69,7 +69,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed require-by-string resolution not following symlinks ([#896](https://github.com/JohnnyMorganz/luau-lsp/issues/896))
 - Fixed auto-imports incorrectly showing when indexing a variable inside a table literal ([#1384](https://github.com/JohnnyMorganz/luau-lsp/issues/1384))
 
-## [1.62.0] - 2026-02-14
+## `1.62.0`
 
 ### Added
 
@@ -85,7 +85,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Documentation is now shown for base table members of metatable types when `__index` exists ([#1360](https://github.com/JohnnyMorganz/luau-lsp/issues/1360))
 - Fixed crash ("invalid string position") when computing inlay hints for truncated intersection or union types with type spans
 
-## [1.61.0] - 2026-01-24
+## `1.61.0`
 
 ### Added
 
@@ -102,7 +102,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `luau-lsp analyze` will now process `@roblox` definition files before others, matching the behavior of the language server ([#1341](https://github.com/JohnnyMorganz/luau-lsp/pull/1341))
 - Studio plugin no longer crashes when lacking script injection permission ([#1343](https://github.com/JohnnyMorganz/luau-lsp/pull/1343))
 
-## [1.60.1] - 2026-01-15
+## `1.60.1`
 
 ### Changed
 
@@ -112,7 +112,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fixed use-after-free in cached DataModel types after a Studio Plugin update with an existing sourcemap, leading to server crashes ([#1331](https://github.com/JohnnyMorganz/luau-lsp/issues/1331))
 
-## [1.60.0] - 2026-01-04
+## `1.60.0`
 
 ### Added
 
@@ -134,7 +134,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - VSCode: fixed cursor being positioned outside of the string after performing automatic quote conversion to backticks ([#1317](https://github.com/JohnnyMorganz/luau-lsp/issues/1317))
 - VSCode: fixed builtin documentation files (api-docs.json) not being downloaded, leading to an error that documentation files do not exist
 
-## [1.59.0] - 2025-12-28
+## `1.59.0`
 
 ### Added
 
@@ -169,7 +169,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Ignored files that are changed externally are correctly marked as dirty internally to ensure the next typecheck will use updated source contents ([#1144](https://github.com/JohnnyMorganz/luau-lsp/issues/1144))
 - Fixed documentation not being shown when hovering over shared properties of unioned table types. Go to Definition now also returns multiple locations when the property is defined in different union members ([#1018](https://github.com/JohnnyMorganz/luau-lsp/issues/1018))
 
-## [1.58.0] - 2025-12-14
+## `1.58.0`
 
 ### Added
 
@@ -190,13 +190,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Studio Plugin: fixed some issues with untracking where connections are not cleaned up ([#1280](https://github.com/JohnnyMorganz/luau-lsp/pull/1280))
 - Fixed incorrect old solver mode configured for the null workspace (default workspace when a Luau file is not part of an opened folder) when `FFlag::LuauUseWorkspacePropToChooseSolver` and new solver is enabled. This would lead to features such as autocompletion not working. ([#1292](https://github.com/JohnnyMorganz/luau-lsp/issues/1292))
 
-## [1.57.1] - 2025-11-30
+## `1.57.1`
 
 ### Fixed
 
 - Fixed builtin Roblox definitions no longer loading into the language server on VSCode
 
-## [1.57.0] - 2025-11-30
+## `1.57.0`
 
 ### Added
 
@@ -214,7 +214,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fixed Signature Help not skipping the first 'self' argument when calling a function with method syntax (`:`), where the function type was generated by a type function ([#1250](https://github.com/JohnnyMorganz/luau-lsp/issues/1250))
 
-## [1.56.2] - 2025-11-19
+## `1.56.2`
 
 ### Changed
 
@@ -224,13 +224,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fix type mismatch issue for 'types.definitionsFiles' setting in VSCode ([#1253](https://github.com/JohnnyMorganz/luau-lsp/issues/1253))
 
-## [1.56.1] - 2025-11-04
+## `1.56.1`
 
 ### Fixed
 
 - Reverted "Fixed auto-imports not showing up when autocompleting in array-like tables" due to it incorrectly suggesting auto-imports when indexing tables (e.g., `local x = tbl.pro|`)
 
-## [1.56.0] - 2025-11-02
+## `1.56.0`
 
 ### Added
 
@@ -255,7 +255,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed auto-indentation in VSCode when entering a block if there is a comment after the introduction token (e.g., `if true then -- comment`) ([#1222](https://github.com/JohnnyMorganz/luau-lsp/issues/1222))
 - Fixed auto-imports not showing up when autocompleting in array-like tables (i.e., before the `=` sign has been written for a property) ([#1062](https://github.com/JohnnyMorganz/luau-lsp/issues/1062))
 
-## [1.55.0] - 2025-10-19
+## `1.55.0`
 
 ### Added
 
@@ -277,7 +277,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Sync to upstream Luau 696
 
-## [1.54.0] - 2025-09-27
+## `1.54.0`
 
 ### Added
 
@@ -330,19 +330,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed incorrect shutdown sequence leading to errors on reload (e.g., "Pending response rejected since connection got
   disposed", or "Stopping the server timed out") ([#1210](https://github.com/JohnnyMorganz/luau-lsp/issues/1210))
 
-## [1.53.5] - 2025-09-20
+## `1.53.5`
 
 ### Fixed
 
 - Upgrade sentry-native version to fix macOS build
 
-## [1.53.4] - 2025-09-20
+## `1.53.4`
 
 ### Changed
 
 - Sync to upstream Luau 0.692
 
-## [1.53.3] - 2025-09-06
+## `1.53.3`
 
 ### Changed
 
@@ -351,7 +351,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   highlighting `buffer` / `thread` etc. as
   types ([Luau.tmLanguage #18](https://github.com/JohnnyMorganz/Luau.tmLanguage/pull/18), [Luau.tmLanguage #19](https://github.com/JohnnyMorganz/Luau.tmLanguage/pull/19))
 
-## [1.53.2] - 2025-08-30
+## `1.53.2`
 
 ### Changed
 
@@ -363,14 +363,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed server failing to start up due to incorrectly handling string-based RPC message
   IDs ([#1175](https://github.com/JohnnyMorganz/luau-lsp/issues/1175))
 
-## [1.53.1] - 2025-07-31
+## `1.53.1`
 
 ### Fixed
 
 - Fixed crash on server shutdown due to deadlock
 - Fixed crashes on macOS due to small thread stack sizes causing stack overflows in Luau typechecking
 
-## [1.53.0] - 2025-07-26
+## `1.53.0`
 
 ### Added
 
@@ -391,7 +391,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed autocomplete of function calls in new solver not inserting parameter names if the parameters do not have a type
   annotation
 
-## [1.52.1] - 2025-07-12
+## `1.52.1`
 
 ### Changed
 
@@ -404,7 +404,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed incorrect paths showing up for errors when using
   `luau-lsp analyze` ([#1146](https://github.com/JohnnyMorganz/luau-lsp/issues/1146))
 
-## [1.52.0] - 2025-07-05
+## `1.52.0`
 
 ### Added
 
@@ -428,7 +428,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed auto-imports of children / descendant modules missing a `script.` prefix in the generated require
   statement ([#1135](https://github.com/JohnnyMorganz/luau-lsp/issues/1135))
 
-## [1.51.0] - 2025-06-24
+## `1.51.0`
 
 ### Added
 
@@ -450,7 +450,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed handling of non-ASCII file paths and directories on
   Windows ([#746](https://github.com/JohnnyMorganz/luau-lsp/issues/746))
 
-## [1.50.0] - 2025-06-16
+## `1.50.0`
 
 ### Added
 
@@ -470,7 +470,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fixed stack overflow when looking up a property on self-referential intersection types
 
-## [1.49.1] - 2025-06-09
+## `1.49.1`
 
 ### Changed
 
@@ -481,7 +481,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed requests failing when write a string require where the filename begins with disallowed names (e.g. `./con`) on
   Windows
 
-## [1.49.0] - 2025-06-01
+## `1.49.0`
 
 ### Added
 
@@ -520,7 +520,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `init.luau` files are no longer aware of `.luaurc` files that are its sibling on the file
   system ([#1037](https://github.com/JohnnyMorganz/luau-lsp/issues/1037))
 
-## [1.48.0] - 2025-05-28
+## `1.48.0`
 
 ### Added
 
@@ -556,7 +556,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - VSCode: if fetching API documentation / definitions fails, then we do not overwrite the existing
   file ([#740](https://github.com/JohnnyMorganz/luau-lsp/issues/740))
 
-## [1.47.0] - 2025-05-17
+## `1.47.0`
 
 ### Added
 
@@ -569,7 +569,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Sync to upstream Luau 0.674
 
-## [1.46.0] - 2025-05-13
+## `1.46.0`
 
 ### Added
 
@@ -590,7 +590,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed diagnostics not getting updated for dependent files when a file is edited and workspace diagnostics is
   enabled ([#1042](https://github.com/JohnnyMorganz/luau-lsp/issues/1042))
 
-## [1.45.0] - 2025-05-04
+## `1.45.0`
 
 ### Added
 
@@ -617,14 +617,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `require(Modules["react-spring"])`) ([#1026](https://github.com/JohnnyMorganz/luau-lsp/issues/1026))
 - Auto-imports no longer create invalid variable names ([#1026](https://github.com/JohnnyMorganz/luau-lsp/issues/1026))
 
-## [1.44.1] - 2025-04-24
+## `1.44.1`
 
 ### Fixed
 
 - Fixed incorrect serialization of maps that are keyed by a Uri, causing commands that apply edits such as Rename to
   fail
 
-## [1.44.0] - 2025-04-24
+## `1.44.0`
 
 ### Removed
 
@@ -650,7 +650,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed "isIgnoredFile failed: relative path is default-constructed" for Neovim Windows
   users ([#752](https://github.com/JohnnyMorganz/luau-lsp/issues/752))
 
-## [1.43.0] - 2025-04-19
+## `1.43.0`
 
 ### Added
 
@@ -674,7 +674,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed a bug when the New Type Solver is enabled where diagnostics would not update in dependent files when a file was
   changed until the dependent file is modified
 
-## [1.42.1] - 2025-04-06
+## `1.42.1`
 
 ### Changed
 
@@ -687,7 +687,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed crash when registering a non-Roblox definitions file that contains classes named `Object` / `Instance` /
   `ServiceProvider` / `EnumItem` ([#986](https://github.com/JohnnyMorganz/luau-lsp/issues/986))
 
-## [1.42.0] - 2025-03-27
+## `1.42.0`
 
 ### Changed
 
@@ -703,7 +703,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed sources of crashing and flakiness when hovering + go to definition on imported type references in the new solver
 - Reduced the need to run 2 type checks unnecessarily on files when the new type solver is enabled
 
-## [1.41.0] - 2025-03-16
+## `1.41.0`
 
 ### Added
 
@@ -728,7 +728,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The language server will no longer attempt to remove HTML tags from
   documentation ([#964](https://github.com/JohnnyMorganz/luau-lsp/pull/964))
 
-## [1.40.0] - 2025-03-01
+## `1.40.0`
 
 ### Added
 
@@ -749,7 +749,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Autocompleting a table property that matches a keyword will now autocomplete correctly with braces (i.e., `t.then` ->
   `t["then"]`) ([#937](https://github.com/JohnnyMorganz/luau-lsp/issues/937))
 
-## [1.39.2] - 2025-02-15
+## `1.39.2`
 
 ### Changed
 
@@ -764,13 +764,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed stack-use-after-free crash in sourcemap definition magic functions when the new solver is
   enabled ([#928](https://github.com/JohnnyMorganz/luau-lsp/issues/928))
 
-## [1.39.1] - 2025-02-08
+## `1.39.1`
 
 ### Fixed
 
 - Fixed server failing to start up due to attempting to run an invalid path as the server binary
 
-## [1.39.0] - 2025-02-08
+## `1.39.0`
 
 ### Added
 
@@ -797,13 +797,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed erroneous `unknown notificated method: $/plugin/full` message in logs even though plugin message was handled
 - Linux ARM releases are now built on arm-based GitHub runners, and hence should support Linux ARM properly
 
-## [1.38.1] - 2025-01-12
+## `1.38.1`
 
 ### Changed
 
 - Sync to upstream Luau 0.656
 
-## [1.38.0] - 2024-12-28
+## `1.38.0`
 
 ### Added
 
@@ -858,7 +858,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   hierarchy ([#636](https://github.com/JohnnyMorganz/luau-lsp/issues/636))
 - Fixed Studio Plugin leaking Instance connections after disconnecting from server
 
-## [1.37.0] - 2024-12-14
+## `1.37.0`
 
 ### Added
 
@@ -878,7 +878,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Autocompletion in string requires will now show aliases in their original case defined in `.luaurc`, rather than all
   lowercased
 
-## [1.36.0] - 2024-11-30
+## `1.36.0`
 
 ### Deprecated
 
@@ -898,7 +898,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   projects ([#826](https://github.com/JohnnyMorganz/luau-lsp/issues/826))
 - Sync to upstream Luau 0.653
 
-## [1.35.0] - 2024-11-10
+## `1.35.0`
 
 ### Removed
 
@@ -933,7 +933,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed crashing of overload resolution in signature help when new solver is
   enabled ([#823](https://github.com/JohnnyMorganz/luau-lsp/issues/823))
 
-## [1.34.0] - 2024-10-27
+## `1.34.0`
 
 ### Changed
 
@@ -943,7 +943,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fixed internal handling of Roblox datatypes segfaulting due to introduction of "Object" class
 
-## [1.33.1] - 2024-10-05
+## `1.33.1`
 
 ### Changed
 
@@ -954,7 +954,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed a regression in 1.30.0 breaking type definitions files that rely on mutations like `Enum.Foo`
   ([#658](https://github.com/JohnnyMorganz/luau-lsp/issues/658))
 
-## [1.33.0] - 2024-09-27
+## `1.33.0`
 
 ### Changed
 
@@ -962,13 +962,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The VSCode extension will now sync flags beginning with `FIntLuau`, `DFFlagLuau` and `DFIntLuau` (previously it would
   only sync `FFlagLuau`)
 
-## [1.32.4] - 2024-09-11
+## `1.32.4`
 
 ### Changed
 
 - Sync to upstream Luau 0.642
 
-## [1.32.3] - 2024-08-10
+## `1.32.3`
 
 ### Fixed
 
@@ -976,7 +976,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   relative usages of
   it. ([#734](https://github.com/JohnnyMorganz/luau-lsp/issues/734), [#735](https://github.com/JohnnyMorganz/luau-lsp/issues/735))
 
-## [1.32.2] - 2024-08-10
+## `1.32.2`
 
 ### Changed
 
@@ -991,7 +991,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed documentation not showing for properties of an intersected type table in Hover and
   Autocomplete ([#715](https://github.com/JohnnyMorganz/luau-lsp/issues/715))
 
-## [1.32.1] - 2024-07-23
+## `1.32.1`
 
 ### Changed
 
@@ -1012,7 +1012,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed tilde expansion (`~`) for paths to home directory not working in
   VSCode ([#707](https://github.com/JohnnyMorganz/luau-lsp/issues/707))
 
-## [1.32.0] - 2024-07-14
+## `1.32.0`
 
 ### Added
 
@@ -1051,7 +1051,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   mismatch with the filepath understood by VSCode, leading to desync in internal file
   state. ([#645](https://github.com/JohnnyMorganz/luau-lsp/issues/645))
 
-## [1.31.1] - 2024-07-07
+## `1.31.1`
 
 ### Fixed
 
@@ -1060,7 +1060,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed Roblox types still showing when setting `luau-lsp.platform.type` to something other than
   `roblox`. ([#668](https://github.com/JohnnyMorganz/luau-lsp/issues/668))
 
-## [1.31.0] - 2024-07-01
+## `1.31.0`
 
 ### Changed
 
@@ -1075,13 +1075,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed crashes occuring for users without the MSVC Redistributable installed due to introduced dependency on Windows
   headers ([#657](https://github.com/JohnnyMorganz/luau-lsp/issues/657))
 
-## [1.30.1] - 2024-06-27
+## `1.30.1`
 
 ### Fixed
 
 - Fixed use-after-free when generating sourcemap types
 
-## [1.30.0] - 2024-06-23
+## `1.30.0`
 
 ### Deprecated
 
@@ -1115,7 +1115,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed semantic token highlighting overrides for global variables
 - Improved robustness for non-ASCII filesystem paths in file lookup and directory traversal
 
-## [1.29.1] - 2024-05-19
+## `1.29.1`
 
 ### Changed
 
@@ -1128,7 +1128,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Likewise, rename now supports global functions defined in a
   file ([#568](https://github.com/JohnnyMorganz/luau-lsp/issues/568))
 
-## [1.29.0] - 2024-05-11
+## `1.29.0`
 
 ### Added
 
@@ -1151,13 +1151,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   replaced ([#607](https://github.com/JohnnyMorganz/luau-lsp/issues/607))
 - Fixed bug with string requires where a required files types may not correctly update when the file contents changed
 
-## [1.28.1] - 2024-03-04
+## `1.28.1`
 
 ### Fixed
 
 - Fixed macos release build
 
-## [1.28.0] - 2024-03-03
+## `1.28.0`
 
 ### Changed
 
@@ -1174,7 +1174,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed bad handling of unicode in filesystem paths causing crashes on server startup
 - Gracefully handle filesystem errors when visiting directories for indexing / workspace diagnostics
 
-## [1.27.1] - 2024-01-20
+## `1.27.1`
 
 ### Changed
 
@@ -1187,7 +1187,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Improved handling of configuration info received from non-VSCode clients
 - Functions with explicitly defined `self` parameters are correctly marked with the `method` semantic token
 
-## [1.27.0] - 2023-12-25
+## `1.27.0`
 
 ### Added
 
@@ -1235,7 +1235,7 @@ local T = {
 - Fixed go to definition on a property of a table that stores a cross-module type value (e.g. the result of a function
   defined in another module)
 
-## [1.26.0] - 2023-11-19
+## `1.26.0`
 
 ### Added
 
@@ -1268,7 +1268,7 @@ type Foo = {
 - Auto-import requires will now show the full codeblock that will be inserted, rather than just the first line if also
   inserting a service
 
-## [1.25.0] - 2023-10-14
+## `1.25.0`
 
 ### Changed
 
@@ -1281,7 +1281,7 @@ type Foo = {
 - Do not add line separator in hover when there is no text documentation
 - Fixed init files not working with directory aliases (e.g. `require("@dir")` or `require("@dir/subdir")`)
 
-## [1.24.1] - 2023-09-09
+## `1.24.1`
 
 ### Changed
 
@@ -1292,7 +1292,7 @@ type Foo = {
 
 - Fixed crash when attempting to Go To Definition of an imported type
 
-## [1.24.0] - 2023-08-26
+## `1.24.0`
 
 ### Changed
 
@@ -1306,7 +1306,7 @@ type Foo = {
 - Fixed color presentations values being unclamped causing errors in other editors
 - Fixed newline not added to separate services and requires when the suggestion imports both at the same time
 
-## [1.23.0] - 2023-08-06
+## `1.23.0`
 
 ### Added
 
@@ -1330,7 +1330,7 @@ type Foo = {
   `Module.mod.luau`
 - Fixed resolution of directory aliases pointing to relative paths
 
-## [1.22.1] - 2023-07-15
+## `1.22.1`
 
 ### Changed
 
@@ -1349,7 +1349,7 @@ type Foo = {
 - Fixed some syntax highlighting inconsistencies
 - Added a temporary fix to "RecursionLimitException" exceptions leaking to the public interface.
 
-## [1.22.0] - 2023-06-30
+## `1.22.0`
 
 ### Added
 
@@ -1381,7 +1381,7 @@ type Foo = {
 - Fixed rename symbol not working when triggered at the end of a symbol
 - Fix indentation of autocomplete end when autocompleting inside of a function call
 
-## [1.21.0] - 2023-06-14
+## `1.21.0`
 
 ### Deprecated
 
@@ -1411,19 +1411,19 @@ type Foo = {
 - When editing in model projects, we now force relative requires, instead of incorrect absolute requires using a "
   ProjectRoot"
 
-## [1.20.2] - 2023-05-10
+## `1.20.2`
 
 ### Fixed
 
 - Fixed internal error for LazyType unwrapping
 
-## [1.20.1] - 2023-05-09
+## `1.20.1`
 
 ### Fixed
 
 - Fixed bug in semantic tokens system causing language server crashes
 
-## [1.20.0] - 2023-05-09
+## `1.20.0`
 
 ### Added
 
@@ -1447,7 +1447,7 @@ type Foo = {
 
 - Sync to upstream Luau 0.575
 
-## [1.19.2]
+## `1.19.2`
 
 ### Fixed
 
@@ -1455,13 +1455,13 @@ type Foo = {
 - Added option `--no-strict-dm-types` for analyze CLI to disable strict datamodel types and its associated false
   positives
 
-## [1.19.1] - 2023-04-27
+## `1.19.1`
 
 ### Fixed
 
 - Fixed regression in DataModel item autocompletion
 
-## [1.19.0] - 2023-04-26
+## `1.19.0`
 
 ### Deprecated
 
@@ -1501,7 +1501,7 @@ type Foo = {
   Originally, nothing would autocomplete. Now, everything inside of the Constants folder will still autocomplete as
   usual (filtered for "Te").
 
-## [1.18.1] - 2023-03-23
+## `1.18.1`
 
 ### Fixed
 
@@ -1513,7 +1513,7 @@ type Foo = {
   is a multiline comment, and the service is imported above that comment, but the require gets imported inside of the
   comment incorrectly.
 
-## [1.18.0] - 2023-03-20
+## `1.18.0`
 
 ### Added
 
@@ -1542,7 +1542,7 @@ To enable this feature, the FFlag `LuauTinyControlFlowAnalysis` must currently b
 - The language server will only be enabled on "file" and "untitled" schemes. This means it will be disabled in diff mode
   and live share. This is because we cannot yet provide sufficient information in these contexts.
 
-## [1.17.1] - 2023-03-04
+## `1.17.1`
 
 ### Changed
 
@@ -1553,7 +1553,7 @@ To enable this feature, the FFlag `LuauTinyControlFlowAnalysis` must currently b
 - Don't autocomplete another set of parentheses on a function call if they already exist
 - Fix `.luaurc` in current working directory not taken into account when calling `luau-lsp analyze`
 
-## [1.17.0] - 2023-02-12
+## `1.17.0`
 
 ### Added
 
@@ -1577,19 +1577,19 @@ To enable this feature, the FFlag `LuauTinyControlFlowAnalysis` must currently b
 
 - Further fixes to document symbols failing due to malformed ranges
 
-## [1.16.4] - 2023-02-10
+## `1.16.4`
 
 ### Fixed
 
 - Fixed document symbols crashing due to internal malformed data
 
-## [1.16.3] - 2023-02-09
+## `1.16.3`
 
 ### Fixed
 
 - Changed internal representation of documents to reduce the likelihood of Request Failed for "No managed text document"
 
-## [1.16.2] - 2023-02-01
+## `1.16.2`
 
 ### Fixed
 
@@ -1597,14 +1597,14 @@ To enable this feature, the FFlag `LuauTinyControlFlowAnalysis` must currently b
 - Fixed `--base-luaurc` not registering for an LSP server
 - Fixed crashing on invalid FFlags configuration - the VSCode client will now validate the flags
 
-## [1.16.1] - 2023-01-30
+## `1.16.1`
 
 ### Fixed
 
 - Fixed error in document symbols not conforming to specification - `selectionRange` will now be fully enclosed by
   `range`
 
-## [1.16.0] - 2023-01-29
+## `1.16.0`
 
 ### Added
 
@@ -1654,7 +1654,7 @@ type Contents = {
 - Fixed diagnostics not clearing for files which were deleted unconventionally (i.e., outside of VSCode using File
   Explorer, or external commands such as `git stash`)
 
-## [1.15.0] - 2023-01-11
+## `1.15.0`
 
 ### Added
 
@@ -1704,20 +1704,20 @@ local y = tbl.data -- Should give "This is some special information"
   failed unification and `never` types
 - Constant variables will now be syntax highlighted appropriately at definition site (`local CONSTANT`)
 
-## [1.14.3] - 2022-12-10
+## `1.14.3`
 
 ### Changed
 
 - Sync to upstream Luau 0.556 (fixes crashing problems)
 - Sync to latest language client
 
-## [1.14.2] - 2022-12-04
+## `1.14.2`
 
 ### Changed
 
 - Sync to upstream Luau 0.555 (in particular, this has improvements to class definitions)
 
-## [1.14.1] - 2022-11-23
+## `1.14.1`
 
 ### Changed
 
@@ -1727,7 +1727,7 @@ local y = tbl.data -- Should give "This is some special information"
 
 - Fixed stack overflow when looking up properties on a table type where the `__index` is set to itself
 
-## [1.14.0] - 2022-11-13
+## `1.14.0`
 
 ### Added
 
@@ -1742,7 +1742,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed rename symbol not working when cursor after variable
 - Fixed rename symbol causing server crashing when attempting to rename a token which is not a variable
 
-## [1.13.1] - 2022-10-29
+## `1.13.1`
 
 ### Fixed
 
@@ -1751,7 +1751,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed Inlay Hints crash when calling a function which only takes varargs
 - Fixed Request Failed due to "No managed text document" as URLs were not being updated correctly
 
-## [1.13.0] - 2022-10-28
+## `1.13.0`
 
 ### Added
 
@@ -1783,14 +1783,14 @@ local y = tbl.data -- Should give "This is some special information"
 - Correctly handle highlighting variadic arguments in signature help
 - [Sublime Text] Fixed push diagnostics not being recomputed when sourcemap or `.luaurc` changes
 
-## [1.12.1] - 2022-10-18
+## `1.12.1`
 
 ### Fixed
 
 - Fixed attempting to run workspace diagnostics on null workspace causing Internal Server errors (affecting Sublime
   Text)
 
-## [1.12.0] - 2022-10-18
+## `1.12.0`
 
 ### Added
 
@@ -1819,7 +1819,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed `self` incorrectly showing up in Inlay Hints and Signature Help
 - Fixed Studio Plugin syncing causing server crashes
 
-## [1.11.2] - 2022-10-08
+## `1.11.2`
 
 ### Changed
 
@@ -1832,7 +1832,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed DM types not generated for `script` nodes. Improved autocomplete will now be provided for non-DataModel
   projects (e.g. `Tool` as Root)
 
-## [1.11.1] - 2022-10-01
+## `1.11.1`
 
 ### Changed
 
@@ -1843,7 +1843,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed handling of UTF-16 characters of different size to UTF-8 (i.e., emojis, non-english text). Will no longer
   produce malformed strings and weird diagnostics
 
-## [1.11.0] - 2022-09-28
+## `1.11.0`
 
 ### Added
 
@@ -1865,7 +1865,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed diagnostics not showing on initial startup in push diagnostics mode (Sublime Text)
 - Fixed "insert inlay hint" incorrectly enabled for error types
 
-## [1.10.1] - 2022-09-24
+## `1.10.1`
 
 ### Changed
 
@@ -1881,7 +1881,7 @@ local y = tbl.data -- Should give "This is some special information"
   and PlayerGui + StarterGear)
 - Fixed type errors being reported twice in `luau-lsp analyze`
 
-## [1.10.0] - 2022-09-17
+## `1.10.0`
 
 ### Added
 
@@ -1902,7 +1902,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed false document diagnostics showing up for opened tabs when VSCode is first
   started ([#132](https://github.com/JohnnyMorganz/luau-lsp/issues/132))
 
-## [1.9.2] - 2022-09-06
+## `1.9.2`
 
 ### Changed
 
@@ -1917,7 +1917,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed crash when Suggest Imports is enabled and you have a local variable defined with no assigned value (e.g.
   `local name`)
 
-## [1.9.1] - 2022-08-29
+## `1.9.1`
 
 ### Changed
 
@@ -1929,7 +1929,7 @@ local y = tbl.data -- Should give "This is some special information"
   beginning of the file
 - Fixed warning messages showing up as notifications when generating Rojo Sourcemap even if it works successfully
 
-## [1.9.0] - 2022-08-16
+## `1.9.0`
 
 ### Added
 
@@ -1959,13 +1959,13 @@ local y = tbl.data -- Should give "This is some special information"
 - `:GetActor` is fixed to return `Actor?`
 - Fixed bug when using `--definitions=` when calling `luau-lsp analyze`
 
-## [1.8.1] - 2022-08-01
+## `1.8.1`
 
 ### Fixed
 
 - Fixed `self` being showed as the first inlay hint incorrectly in parameter names and types
 
-## [1.8.0] - 2022-07-30
+## `1.8.0`
 
 ### Added
 
@@ -1987,13 +1987,13 @@ local y = tbl.data -- Should give "This is some special information"
 - Luau LSP will now activate if you run an LSP command
 - Fixed finding the incorrect workspace folder to analyze with in a multi-workspace environment
 
-## [1.7.1] - 2022-07-17
+## `1.7.1`
 
 ### Fixed
 
 - Fix crash when hovering over function type definitions
 
-## [1.7.0] - 2022-07-16
+## `1.7.0`
 
 ### Added
 
@@ -2022,7 +2022,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed go to definition on a global just going to the top of the file. It will now not accept go to definition requests
 - Fixed using absolute file paths to point to definition files not working on Windows
 
-## [1.6.0] - 2022-07-02
+## `1.6.0`
 
 ### Added
 
@@ -2050,7 +2050,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed excessive whitespace in document symbols for expr-named function defintions
 - Fixed hover for global functions and local variables
 
-## [1.5.2] - 2022-06-22
+## `1.5.2`
 
 ### Changed
 
@@ -2061,7 +2061,7 @@ local y = tbl.data -- Should give "This is some special information"
 
 - Fixed diagnostics not showing for any file after the first one you open
 
-## [1.5.1] - 2022-06-21
+## `1.5.1`
 
 ### Fixed
 
@@ -2070,7 +2070,7 @@ local y = tbl.data -- Should give "This is some special information"
   recreating a new document of the same name.
 - Fixed duplicate diagnostics displayed and never clearing when `workspace` diagnostics configuration was enabled
 
-## [1.5.0] - 2022-06-20
+## `1.5.0`
 
 ### Added
 
@@ -2098,7 +2098,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed function stringification when using an expression index call such as `data["property"]()`
 - Fixed workspace diagnostics not respecting ignore globs for dependent files
 
-## [1.4.0] - 2022-06-12
+## `1.4.0`
 
 ### Added
 
@@ -2128,7 +2128,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed "Text Document not loaded locally" error occuring when you start typing in a newly created file (as the
   sourcemap is not yet up-to-date)
 
-## [1.3.0] - 2022-06-10
+## `1.3.0`
 
 ### Added
 
@@ -2147,7 +2147,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed requiring modules in `LocalPlayer.PlayerGui` / `LocalPlayer.PlayerScripts` / `LocalPlayer.StarterGear`
 - Changing `.luaurc` configuration will now refresh the config cache and update internally
 
-## [1.2.0] - 2022-06-04
+## `1.2.0`
 
 ### Added
 
@@ -2169,7 +2169,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed reverse dependencies not updating when types of required modules change (causing the type system to be
   incorrect). i.e., if you required script B in script A, and change script B, now the change will propagate to script A
 
-## [1.1.0] - 2022-05-20
+## `1.1.0`
 
 ### Added
 
@@ -2186,7 +2186,7 @@ local y = tbl.data -- Should give "This is some special information"
 
 - Sync to upstream Luau 0.528
 
-## [1.0.0] - 2022-05-19
+## `1.0.0`
 
 ### Added
 
@@ -2209,14 +2209,14 @@ local y = tbl.data -- Should give "This is some special information"
 
 - Fixed syntax highlighting of generic type packs in function definitions
 
-## [0.4.1] - 2022-05-17
+## `0.4.1`
 
 ### Fixed
 
 - Fixed signature help not showing up
 - Fixed markdown in completion not working
 
-## [0.4.0] - 2022-05-17
+## `0.4.0`
 
 ### Added
 
@@ -2240,7 +2240,7 @@ local y = tbl.data -- Should give "This is some special information"
 - Fixed diagnostics lost on a reopened file because we did not mark it as dirty
 - Fixed invalid path computed for related diagnostics so they were not showing in the editor
 
-## [0.3.0] - 2022-05-15
+## `0.3.0`
 
 ### Added
 
@@ -2258,7 +2258,7 @@ local y = tbl.data -- Should give "This is some special information"
 
 - Fixed spurious diagnostics on initial load of a file
 
-## [0.2.0] - 2022-05-14
+## `0.2.0`
 
 ### Added
 
@@ -2270,18 +2270,18 @@ local y = tbl.data -- Should give "This is some special information"
 
 - Improved stringification of functions to look nicer in hover and signature help
 
-## [0.1.2] - 2022-05-14
+## `0.1.2`
 
 ### Fixed
 
 - Fix crash when workspace does not have a `sourcemap.json` present in root
 
-## [0.1.1] - 2022-05-14
+## `0.1.1`
 
 ### Fixed
 
 - Bug Fixes
 
-## [0.1.0] - 2022-05-13
+## `0.1.0`
 
 - Initial basic release
