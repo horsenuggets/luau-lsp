@@ -8,6 +8,8 @@
 #include "Platform/RobloxPlatform.hpp"
 #include "Luau/TypeAttach.h"
 #include "Luau/PrettyPrinter.h"
+#include "LSP/LuauExt.hpp"
+#include "RobloxTypes.hpp"
 
 TEST_SUITE_BEGIN("AnalyzeCli");
 
@@ -221,6 +223,13 @@ TEST_CASE("builtin_definitions_follow_platform_and_user_definitions")
                 CHECK(packages.empty());
         }
     }
+}
+
+TEST_CASE("embedded_roblox_definitions_keep_metadata_on_first_line")
+{
+    REQUIRE(ROBLOX_GLOBAL_TYPES != nullptr);
+    CHECK(Luau::startsWith(ROBLOX_GLOBAL_TYPES, "--#METADATA#"));
+    CHECK(types::parseDefinitionsFileMetadata(ROBLOX_GLOBAL_TYPES).has_value());
 }
 
 TEST_CASE("lune_builtin_definitions_are_registered_in_workspace")

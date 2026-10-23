@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Sync to upstream Luau 0.742
 - Merged upstream luau-lsp through 1.70.1
 
+### Fixed
+
+- Fixed the embedded Roblox definitions in `luau-lsp analyze` dropping their metadata, which lost typed `Instance.new` and `GetService` results
+
 ## `1.70.1`
 
 ### Added
