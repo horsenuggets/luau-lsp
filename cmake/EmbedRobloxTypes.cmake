@@ -27,18 +27,19 @@ if(EXISTS "${ROBLOX_TYPES_FILE}")
 
         if(NEW_SIZE GREATER MAX_CHUNK_SIZE AND CHUNK_SIZE GREATER 0)
             # Flush current chunk
-            string(APPEND HEADER_CONTENT "    result += R\"LUAU_DEFS(${CHUNK}\n)LUAU_DEFS\";\n")
+            string(APPEND HEADER_CONTENT "    result += R\"LUAU_DEFS(${CHUNK})LUAU_DEFS\";\n")
             set(CHUNK "")
             set(CHUNK_SIZE 0)
         endif()
 
-        string(APPEND CHUNK "\n${LINE}")
+        # Append the newline after each line so the metadata comment stays on the first line
+        string(APPEND CHUNK "${LINE}\n")
         math(EXPR CHUNK_SIZE "${CHUNK_SIZE} + ${LINE_LEN} + 1")
     endforeach()
 
     # Flush remaining chunk
     if(CHUNK_SIZE GREATER 0)
-        string(APPEND HEADER_CONTENT "    result += R\"LUAU_DEFS(${CHUNK}\n)LUAU_DEFS\";\n")
+        string(APPEND HEADER_CONTENT "    result += R\"LUAU_DEFS(${CHUNK})LUAU_DEFS\";\n")
     endif()
 
     string(APPEND HEADER_CONTENT "    return result.c_str();\n}\n\n")

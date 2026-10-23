@@ -2,6 +2,8 @@
 
 #include "LSP/WorkspaceFileResolver.hpp"
 
+#include <memory>
+
 class FileRequireNode : public Luau::RequireNode
 {
 public:
@@ -12,8 +14,8 @@ public:
     {
     }
 
-    FileRequireNode(Uri uri, bool isDirectory, WorkspaceFolder* workspaceFolder, Luau::Config mainRequirerNodeConfig)
-        : uri(uri)
+    FileRequireNode(Uri uri, bool isDirectory, WorkspaceFolder* workspaceFolder, std::shared_ptr<const Luau::Config> mainRequirerNodeConfig)
+        : uri(std::move(uri))
         , isDirectory(isDirectory)
         , mainRequirerNodeConfig(std::move(mainRequirerNodeConfig))
         , workspaceFolder(workspaceFolder)
@@ -27,13 +29,13 @@ public:
     std::vector<std::unique_ptr<Luau::RequireNode>> getChildren() const override;
     std::vector<Luau::RequireAlias> getAvailableAliases() const override;
 
-private:
+protected:
     Uri uri;
     bool isDirectory = false;
 
     /// The resolved configuration for the main requirer node
     /// This is for alias resolution
-    Luau::Config mainRequirerNodeConfig;
+    std::shared_ptr<const Luau::Config> mainRequirerNodeConfig;
 
     /// The workspace folder that the files belong to
     /// Used to check ignoreGlobs

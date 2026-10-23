@@ -25,6 +25,8 @@ import { onTypeFormattingMiddleware } from "./onTypeFormattingMiddleware";
 
 import { registerRequireGraph } from "./requireGraph";
 
+import { registerViewInternalSource } from "./internalSource";
+
 import * as roblox from "./roblox";
 import * as utils from "./utils";
 import {
@@ -403,7 +405,9 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
   const serverConfiguration =
     vscode.workspace.getConfiguration("luau-lsp.server");
 
-  const serverBinConfig = serverConfiguration.get("path", "").trim();
+  const serverBinConfig = utils.resolvePath(
+    serverConfiguration.get("path", "").trim(),
+  );
   const serverBinUri =
     vscode.workspace.workspaceFolders &&
     vscode.workspace.workspaceFolders.length > 0
@@ -499,12 +503,19 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
   const serverOptions: ServerOptions = { run, debug };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [
-      { language: "lua", scheme: "file" },
-      { language: "luau", scheme: "file" },
-      { language: "lua", scheme: "untitled" },
-      { language: "luau", scheme: "untitled" },
-    ],
+    documentSelector: vscode.workspace
+      .getConfiguration("luau-lsp")
+      .get<boolean>("analyzeLuaFiles", true)
+      ? [
+          { language: "luau", scheme: "file" },
+          { language: "luau", scheme: "untitled" },
+          { language: "lua", scheme: "file" },
+          { language: "lua", scheme: "untitled" },
+        ]
+      : [
+          { language: "luau", scheme: "file" },
+          { language: "luau", scheme: "untitled" },
+        ],
     diagnosticPullOptions: {
       onChange: vscode.workspace
         .getConfiguration("luau-lsp.diagnostics")
@@ -539,10 +550,29 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     vscode.commands.executeCommand(params.command, params.data);
   });
 
+  clientDisposables.push(
+    vscode.commands.registerCommand(
+      "luau-lsp.rename",
+      async (
+        uriString: string,
+        position: { line: number; character: number },
+      ) => {
+        const uri = vscode.Uri.parse(uriString);
+        const pos = new vscode.Position(position.line, position.character);
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document.uri.toString() === uri.toString()) {
+          editor.selection = new vscode.Selection(pos, pos);
+          await vscode.commands.executeCommand("editor.action.rename");
+        }
+      },
+    ),
+  );
+
   clientDisposables.push(...registerComputeBytecode(context, client));
   clientDisposables.push(...registerComputeCompilerRemarks(context, client));
   clientDisposables.push(...registerComputeCodeGen(context, client));
   clientDisposables.push(...registerRequireGraph(context, client));
+  clientDisposables.push(...registerViewInternalSource(context, client));
   clientDisposables.push(
     vscode.commands.registerCommand("luau-lsp.openWalkthrough", () => {
       return vscode.commands.executeCommand(
@@ -618,7 +648,8 @@ export async function activate(context: vscode.ExtensionContext) {
           });
       } else if (
         e.affectsConfiguration("luau-lsp.types") ||
-        e.affectsConfiguration("luau-lsp.platform.type")
+        e.affectsConfiguration("luau-lsp.platform.type") ||
+        e.affectsConfiguration("luau-lsp.analyzeLuaFiles")
       ) {
         vscode.window
           .showInformationMessage(

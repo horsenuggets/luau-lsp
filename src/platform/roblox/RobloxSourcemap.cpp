@@ -1,6 +1,7 @@
 #include "Luau/TypeFwd.h"
 #include "Platform/RobloxPlatform.hpp"
 
+#include "LSP/Utils.hpp"
 #include "LSP/Workspace.hpp"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/ConstraintSolver.h"
@@ -374,23 +375,27 @@ static void clearSourcemapGeneratedTypes(Luau::GlobalTypes& globals)
     }
 }
 
-static void clearTypesFromSourcemapNodes(SourceNode* node)
-{
-    node->tys.clear();
-    for (const auto& child : node->children)
-        clearTypesFromSourcemapNodes(child);
-}
-
 void RobloxPlatform::clearSourcemapTypes()
 {
     LUAU_TIMETRACE_SCOPE("RobloxPlatform::clearSourcemapTypes", "LSP");
-    workspaceFolder->frontend.clear(); // TODO: https://github.com/JohnnyMorganz/luau-lsp/issues/1115
+    for (const auto& [name, sourceNode] : workspaceFolder->frontend.sourceNodes)
+    {
+        workspaceFolder->frontend.markDirty(name);
+
+        // Marking the module dirty is not enough: the retained type graph of an already-checked
+        // module may reference the sourcemap-generated types (in instanceTypes) that we are about
+        // to free, and fragment autocomplete deliberately reads the stale type graph of a dirty
+        // module. Flag the module as having invalid dependencies so its stale type graph is not
+        // used until it has been rechecked (Frontend::recordItemResult resets the flag)
+        sourceNode->setInvalidModuleDependency(true, /* forAutocomplete= */ false);
+        sourceNode->setInvalidModuleDependency(true, /* forAutocomplete= */ true);
+    }
     instanceTypes.clear();             // NOTE: used across BOTH instances of handleSourcemapUpdate, don't clear in between!
     clearSourcemapGeneratedTypes(workspaceFolder->frontend.globals);
     if (!FFlag::LuauSolverV2)
         clearSourcemapGeneratedTypes(workspaceFolder->frontend.globalsForAutocomplete);
     if (rootSourceNode)
-        clearTypesFromSourcemapNodes(rootSourceNode);
+        rootSourceNode->clearCachedTypes();
 }
 
 bool RobloxPlatform::updateSourceMapFromContents(const std::string& sourceMapContents)
@@ -471,7 +476,24 @@ bool RobloxPlatform::updateSourceMap()
     }
 }
 
-void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base)
+// Rojo's `emitLegacyScripts: false` maps `*.client.luau` to a `Script` with
+// `RunContext = Client` (and `*.server.luau` to `RunContext = Server`). The sourcemap
+// cannot express RunContext, so the class name alone would misclassify these as server
+// scripts (#1594). For scripts emitted by Rojo's default sync rules, the file suffix
+// reflects the run context, so it takes precedence over the bare `Script` class.
+static std::optional<ScriptContext> scriptContextFromFilePathSuffix(const SourceNode* node)
+{
+    if (auto filePath = node->getScriptFilePath())
+    {
+        if (endsWith(*filePath, ".client.lua") || endsWith(*filePath, ".client.luau"))
+            return ScriptContext::Client;
+        if (endsWith(*filePath, ".server.lua") || endsWith(*filePath, ".server.luau"))
+            return ScriptContext::Server;
+    }
+    return std::nullopt;
+}
+
+void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base, ScriptContext parentNameContext)
 {
     LUAU_TIMETRACE_SCOPE("RobloxPlatform::writePathsToMap", "LSP");
     node->virtualPath = base;
@@ -494,11 +516,34 @@ void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base)
         }
     }
 
+    if (node->className == "LocalScript")
+        node->scriptContext = ScriptContext::Client; // client by class invariant, never overridden
+    else if (node->className == "Script")
+        node->scriptContext = scriptContextFromFilePathSuffix(node).value_or(ScriptContext::Server);
+    else
+        node->scriptContext = parentNameContext;
+
+    ScriptContext childNameContext;
+    if (node->name == "ServerScriptService" || node->name == "ServerStorage")
+        childNameContext = ScriptContext::Server;
+    else if (node->name == "StarterPlayer" || node->name == "StarterGui" || node->name == "StarterPack" || node->name == "ReplicatedFirst")
+        childNameContext = ScriptContext::Client;
+    else
+        childNameContext = parentNameContext;
+
     for (auto& child : node->children)
     {
         child->parent = node;
-        writePathsToMap(child, base + "/" + child->name);
+        writePathsToMap(child, base + "/" + child->name, childNameContext);
     }
+}
+
+void RobloxPlatform::rebuildPathMaps()
+{
+    realPathsToSourceNodes.clear();
+    virtualPathsToSourceNodes.clear();
+    if (rootSourceNode)
+        writePathsToMap(rootSourceNode, rootSourceNode->className == "DataModel" ? "game" : "ProjectRoot");
 }
 
 void RobloxPlatform::updateSourceNodeMap(const std::string& sourceMapContents)
@@ -528,8 +573,7 @@ void RobloxPlatform::updateSourceNodeMap(const std::string& sourceMapContents)
     hydrateSourcemapWithPluginInfo();
 
     // Write paths
-    std::string base = rootSourceNode->className == "DataModel" ? "game" : "ProjectRoot";
-    writePathsToMap(rootSourceNode, base);
+    rebuildPathMaps();
 }
 
 // TODO: expressiveTypes is used because of a Luau issue where we can't cast a most specific Instance type (which we create here)
