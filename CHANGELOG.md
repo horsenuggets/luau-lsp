@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## `Unreleased`
+## `1.70.1-horse.1.6`
+
+### Added
+
+- The "Remove unreachable code" quick fix is now offered after calls to functions whose return type is `never`
 
 ### Changed
 
