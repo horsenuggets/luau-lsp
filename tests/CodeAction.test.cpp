@@ -1,19 +1,7 @@
 #include "doctest.h"
 #include "Fixture.h"
+#include "RobloxTestConstants.h"
 #include "Platform/RobloxPlatform.hpp"
-
-static std::optional<lsp::CodeAction> findAction(const lsp::CodeActionResult& result, const std::string& title)
-{
-    if (!result)
-        return std::nullopt;
-
-    for (const auto& action : *result)
-    {
-        if (action.title == title)
-            return action;
-    }
-    return std::nullopt;
-}
 
 TEST_SUITE_BEGIN("CodeAction");
 
@@ -30,7 +18,7 @@ TEST_CASE_FIXTURE(Fixture, "organise_imports_action_is_returned")
     params.context.only = {lsp::CodeActionKind::SourceOrganizeImports};
 
     auto result = workspace.codeAction(params, nullptr);
-    auto action = findAction(result, "Sort requires");
+    auto action = findCodeAction(result, "Sort requires");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::SourceOrganizeImports);
 }
@@ -52,7 +40,7 @@ end
     params.context.only = {lsp::CodeActionKind::QuickFix};
 
     auto result = workspace.codeAction(params, nullptr);
-    auto action = findAction(result, "Add 'local' to global variable");
+    auto action = findCodeAction(result, "Add 'local' to global variable");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::QuickFix);
     CHECK(action->isPreferred == true);
@@ -78,7 +66,7 @@ end
     params.context.only = {lsp::CodeActionKind::QuickFix};
 
     auto result = workspace.codeAction(params, nullptr);
-    auto action = findAction(result, "Add 'local' to global variable");
+    auto action = findCodeAction(result, "Add 'local' to global variable");
     CHECK_FALSE(action);
 }
 
@@ -96,7 +84,7 @@ print("hello")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto prefixAction = findAction(result, "Prefix 'unused' with '_' to silence");
+    auto prefixAction = findCodeAction(result, "Prefix 'unused' with '_' to silence");
     REQUIRE(prefixAction);
     CHECK(prefixAction->kind == lsp::CodeActionKind::QuickFix);
     CHECK(prefixAction->isPreferred == false);
@@ -120,7 +108,7 @@ print("hello")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto deleteAction = findAction(result, "Remove unused variable: 'unused'");
+    auto deleteAction = findCodeAction(result, "Remove unused variable: 'unused'");
     REQUIRE(deleteAction);
     CHECK(deleteAction->kind == lsp::CodeActionKind::QuickFix);
     CHECK(deleteAction->isPreferred == false);
@@ -148,7 +136,7 @@ print("hello")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto prefixAction = findAction(result, "Prefix 'unused' with '_' to silence");
+    auto prefixAction = findCodeAction(result, "Prefix 'unused' with '_' to silence");
     REQUIRE(prefixAction);
     CHECK(prefixAction->kind == lsp::CodeActionKind::QuickFix);
     CHECK(prefixAction->isPreferred == false);
@@ -174,7 +162,7 @@ print("hello")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto deleteAction = findAction(result, "Remove unused function: 'unused'");
+    auto deleteAction = findCodeAction(result, "Remove unused function: 'unused'");
     REQUIRE(deleteAction);
     CHECK(deleteAction->kind == lsp::CodeActionKind::QuickFix);
     CHECK(deleteAction->isPreferred == false);
@@ -200,7 +188,7 @@ print("hello")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto prefixAction = findAction(result, "Prefix 'unused' with '_' to silence");
+    auto prefixAction = findCodeAction(result, "Prefix 'unused' with '_' to silence");
     REQUIRE(prefixAction);
     CHECK(prefixAction->kind == lsp::CodeActionKind::QuickFix);
     CHECK(prefixAction->isPreferred == false);
@@ -224,7 +212,7 @@ print("hello")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto deleteAction = findAction(result, "Remove unused import: 'unused'");
+    auto deleteAction = findCodeAction(result, "Remove unused import: 'unused'");
     REQUIRE(deleteAction);
     CHECK(deleteAction->kind == lsp::CodeActionKind::QuickFix);
     CHECK(deleteAction->isPreferred == false);
@@ -252,7 +240,7 @@ end
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Remove unreachable code");
+    auto action = findCodeAction(result, "Remove unreachable code");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::QuickFix);
     CHECK(action->isPreferred == false);
@@ -262,6 +250,81 @@ end
     CHECK_EQ(changes[0].newText, "");
     CHECK_EQ(changes[0].range.start.line, 3);
     CHECK_EQ(changes[0].range.end.line, 4);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unreachable_code_fix_never_return_type")
+{
+    auto uri = newDocument("test.luau", R"(
+local function die(): never
+    error("fatal")
+end
+
+local function test()
+    die()
+    print("unreachable")
+end
+)");
+
+    lsp::CodeActionParams params;
+    params.textDocument.uri = uri;
+    params.range = {{7, 0}, {8, 0}};
+    params.context.only = {lsp::CodeActionKind::QuickFix};
+
+    auto result = workspace.codeAction(params, nullptr);
+
+    auto action = findCodeAction(result, "Remove unreachable code");
+    REQUIRE(action);
+    CHECK(action->kind == lsp::CodeActionKind::QuickFix);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unreachable_code_fix_never_return_type_method")
+{
+    auto uri = newDocument("test.luau", R"(
+local obj = {}
+function obj.die(): never
+    error("fatal")
+end
+
+local function test()
+    obj.die()
+    print("unreachable")
+end
+)");
+
+    lsp::CodeActionParams params;
+    params.textDocument.uri = uri;
+    params.range = {{8, 0}, {9, 0}};
+    params.context.only = {lsp::CodeActionKind::QuickFix};
+
+    auto result = workspace.codeAction(params, nullptr);
+
+    auto action = findCodeAction(result, "Remove unreachable code");
+    REQUIRE(action);
+    CHECK(action->kind == lsp::CodeActionKind::QuickFix);
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_unreachable_code_for_non_never_return_type")
+{
+    auto uri = newDocument("test.luau", R"(
+local function bar(): number
+    return 42
+end
+
+local function test()
+    bar()
+    print("reachable")
+end
+)");
+
+    lsp::CodeActionParams params;
+    params.textDocument.uri = uri;
+    params.range = {{7, 0}, {8, 0}};
+    params.context.only = {lsp::CodeActionKind::QuickFix};
+
+    auto result = workspace.codeAction(params, nullptr);
+
+    auto action = findCodeAction(result, "Remove unreachable code");
+    CHECK(!action);
 }
 
 TEST_CASE_FIXTURE(Fixture, "remove_all_unused_code_source_action")
@@ -282,7 +345,7 @@ print("hello")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Remove all unused code");
+    auto action = findCodeAction(result, "Remove all unused code");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::Source);
     REQUIRE(action->edit);
@@ -305,7 +368,7 @@ print(used)
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Remove all unused code");
+    auto action = findCodeAction(result, "Remove all unused code");
     CHECK_FALSE(action);
 }
 
@@ -326,7 +389,7 @@ print(foo())
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Remove redundant @native attribute");
+    auto action = findCodeAction(result, "Remove redundant @native attribute");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::QuickFix);
     CHECK(action->isPreferred == false);
@@ -359,7 +422,7 @@ return {}
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Add require for 'MyModule' from \"./MyModule\"");
+    auto action = findCodeAction(result, "Add require for 'MyModule' from \"./MyModule\"");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::QuickFix);
     CHECK(action->isPreferred == true);
@@ -411,7 +474,7 @@ local x = OtherModule
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Add require for 'OtherModule' from \"./OtherModule\"");
+    auto action = findCodeAction(result, "Add require for 'OtherModule' from \"./OtherModule\"");
     REQUIRE(action);
     REQUIRE(action->edit);
     auto& changes = action->edit->changes.at(uri);
@@ -433,7 +496,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_global_offers_service_import_fix")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Import service 'ReplicatedStorage'");
+    auto action = findCodeAction(result, "Import service 'ReplicatedStorage'");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::QuickFix);
     CHECK(action->isPreferred == true);
@@ -489,7 +552,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_global_offers_instance_based_require_fix")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Add require for 'MyModule' from \"ReplicatedStorage.Folder.MyModule\"");
+    auto action = findCodeAction(result, "Add require for 'MyModule' from \"ReplicatedStorage.Folder.MyModule\"");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::QuickFix);
     REQUIRE(action->edit);
@@ -546,7 +609,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_global_instance_require_reuses_existing_serv
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Add require for 'MyModule' from \"ReplicatedStorage.Folder.MyModule\"");
+    auto action = findCodeAction(result, "Add require for 'MyModule' from \"ReplicatedStorage.Folder.MyModule\"");
     REQUIRE(action);
     REQUIRE(action->edit);
     auto& changes = action->edit->changes.at(uri);
@@ -586,7 +649,7 @@ return {}
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Add all missing requires");
+    auto action = findCodeAction(result, "Add all missing requires");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::Source);
     REQUIRE(action->edit);
@@ -616,7 +679,7 @@ local y = 2
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Add all missing requires");
+    auto action = findCodeAction(result, "Add all missing requires");
     CHECK_FALSE(action);
 }
 
@@ -660,7 +723,7 @@ TEST_CASE_FIXTURE(Fixture, "add_all_missing_requires_with_services")
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Add all missing requires");
+    auto action = findCodeAction(result, "Add all missing requires");
     REQUIRE(action);
     REQUIRE(action->edit);
     auto& changes = action->edit->changes.at(uri);
@@ -693,7 +756,7 @@ t.fOo()
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Change 'fOo' to 'Foo'");
+    auto action = findCodeAction(result, "Change 'fOo' to 'Foo'");
     REQUIRE(action);
     CHECK(action->kind == lsp::CodeActionKind::QuickFix);
     CHECK(action->isPreferred == true);
@@ -721,8 +784,8 @@ t.foo()
     auto result = workspace.codeAction(params, nullptr);
 
     // Both candidates should be offered
-    auto action1 = findAction(result, "Change 'foo' to 'Foo'");
-    auto action2 = findAction(result, "Change 'foo' to 'FOO'");
+    auto action1 = findCodeAction(result, "Change 'foo' to 'Foo'");
+    auto action2 = findCodeAction(result, "Change 'foo' to 'FOO'");
     REQUIRE(action1);
     REQUIRE(action2);
 
@@ -748,8 +811,36 @@ t.fOo()
 
     auto result = workspace.codeAction(params, nullptr);
 
-    auto action = findAction(result, "Change 'fOo' to 'Foo'");
+    auto action = findCodeAction(result, "Change 'fOo' to 'Foo'");
     CHECK_FALSE(action);
+}
+
+TEST_CASE_FIXTURE(Fixture, "sourcemap_unknown_symbol_fix_suggests_string_require")
+{
+    client->globalConfig.completion.imports.stringRequires.enabled = true;
+    loadSourcemap(SOURCEMAP_FOR_STRING_REQUIRES);
+
+    std::string source = dedent(R"(
+        local x = ModuleB
+    )");
+    auto uri = newDocument("packages/core/ModuleA.luau", source);
+
+    lsp::CodeActionParams params;
+    params.textDocument.uri = uri;
+    params.range = {{0, 10}, {0, 17}};
+    params.context.only = {lsp::CodeActionKind::QuickFix};
+
+    auto result = workspace.codeAction(params, nullptr);
+    auto action = findCodeAction(result, "Add require for 'ModuleB' from \"./ModuleB\"");
+    REQUIRE(action);
+    REQUIRE(action->edit);
+    auto& changes = action->edit->changes.at(uri);
+
+    auto newSource = applyEdit(source, changes);
+    CHECK_EQ(newSource, dedent(R"(
+        local ModuleB = require("./ModuleB")
+        local x = ModuleB
+    )"));
 }
 
 TEST_SUITE_END();

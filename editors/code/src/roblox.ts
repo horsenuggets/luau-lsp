@@ -11,15 +11,46 @@ import * as utils from "./utils";
 
 let pluginServer: Server | undefined = undefined;
 
+const getStudioPluginValue = <T>(key: string, defaultValue: T): T => {
+  const newInspect = vscode.workspace
+    .getConfiguration("luau-lsp.studioPlugin")
+    .inspect<T>(key);
+  if (
+    newInspect?.globalValue !== undefined ||
+    newInspect?.workspaceValue !== undefined ||
+    newInspect?.workspaceFolderValue !== undefined
+  ) {
+    return (
+      newInspect.workspaceFolderValue ??
+      newInspect.workspaceValue ??
+      newInspect.globalValue ??
+      defaultValue
+    );
+  }
+  return (
+    vscode.workspace.getConfiguration("luau-lsp.plugin").get<T>(key) ??
+    defaultValue
+  );
+};
+
+const getFilePattern = (): string => {
+  const analyzeLua = vscode.workspace
+    .getConfiguration("luau-lsp")
+    .get<boolean>("analyzeLuaFiles", true);
+  return analyzeLua ? "**/*.{lua,luau}" : "**/*.luau";
+};
+
 const API_DOCS = "https://luau-lsp.pages.dev/api-docs/en-us.json";
 const LUAU_API_DOCS = "https://luau-lsp.pages.dev/api-docs/luau-en-us.json";
+const COVERAGE_DOCS =
+  "https://raw.githubusercontent.com/horsenuggets/luau-lsp/main/scripts/coverage-docs.json";
 const STUDIO_PLUGIN_URL =
   "https://www.roblox.com/library/10913122509/Luau-Language-Server-Companion";
 
 const setupStudioPlugin = async (client: LanguageClient | undefined) => {
   // Enable the plugin server
   await vscode.workspace
-    .getConfiguration("luau-lsp.plugin")
+    .getConfiguration("luau-lsp.studioPlugin")
     .update("enabled", true);
   startPluginServer(client);
   // Open the studio plugin in the browser for the user to install
@@ -27,7 +58,7 @@ const setupStudioPlugin = async (client: LanguageClient | undefined) => {
 };
 
 const globalTypesEndpointForSecurityLevel = (securityLevel: string) => {
-  return `https://luau-lsp.pages.dev/type-definitions/globalTypes.${securityLevel}.d.luau`;
+  return `https://raw.githubusercontent.com/horsenuggets/luau-lsp/main/scripts/globalTypes.${securityLevel}.d.luau`;
 };
 
 const globalTypesUri = (
@@ -58,6 +89,10 @@ const luauApiDocsUri = (context: vscode.ExtensionContext) => {
   return vscode.Uri.joinPath(context.globalStorageUri, "luau-api-docs.json");
 };
 
+const coverageDocsUri = (context: vscode.ExtensionContext) => {
+  return vscode.Uri.joinPath(context.globalStorageUri, "coverage-docs.json");
+};
+
 const getRojoProjectFile = async (
   workspaceFolder: vscode.WorkspaceFolder,
   config: vscode.WorkspaceConfiguration,
@@ -79,11 +114,7 @@ const getRojoProjectFile = async (
   if (foundProjectFiles.length === 0) {
     // If the plugin is not enabled, provide a one-click setup button
     let options: string[] = [];
-    if (
-      !vscode.workspace
-        .getConfiguration("luau-lsp.plugin")
-        .get<boolean>("enabled")
-    ) {
+    if (!getStudioPluginValue("enabled", false)) {
       options.push("Setup Plugin");
     }
     options.push("Configure Settings");
@@ -234,7 +265,9 @@ const startSourcemapGeneration = async (
         args.push("--watch");
       }
 
-      loggingFunc(`[Sourcemap] Running: ${rojoPath} ${args.join(" ")} (cwd: ${cwd})`);
+      loggingFunc(
+        `[Sourcemap] Running: ${rojoPath} ${args.join(" ")} (cwd: ${cwd})`,
+      );
       childProcess = spawn(rojoPath, args, { cwd });
     }
 
@@ -244,12 +277,15 @@ const startSourcemapGeneration = async (
     });
 
     childProcess.on("error", (err: NodeJS.ErrnoException) => {
-      const cmd = customGeneratorCommand ?? config.get<string>("rojoPath") ?? "rojo";
+      const cmd =
+        customGeneratorCommand ?? config.get<string>("rojoPath") ?? "rojo";
       if (err.code === "ENOENT") {
         loggingFunc(`[Sourcemap] Command not found: "${cmd}"`);
         stderr += `ENOENT: Command not found: ${cmd}`;
       } else {
-        loggingFunc(`[Sourcemap] Process error: ${err.message} (code: ${err.code})`);
+        loggingFunc(
+          `[Sourcemap] Process error: ${err.message} (code: ${err.code})`,
+        );
         stderr += err.message;
       }
     });
@@ -263,10 +299,7 @@ const startSourcemapGeneration = async (
         let options = ["Retry"];
 
         // Strip ANSI escape codes from stderr for cleaner display
-        const cleanStderr = stderr.replace(
-          /\x1b\[[0-9;]*m/g,
-          "",
-        ).trim();
+        const cleanStderr = stderr.replace(/\x1b\[[0-9;]*m/g, "").trim();
 
         if (customGeneratorCommand) {
           output += cleanStderr;
@@ -276,12 +309,16 @@ const startSourcemapGeneration = async (
           options.push("Configure Settings");
         } else {
           if (
-            cleanStderr.includes("Found argument 'sourcemap' which wasn't expected")
+            cleanStderr.includes(
+              "Found argument 'sourcemap' which wasn't expected",
+            )
           ) {
             output +=
               "Your Rojo version doesn't have sourcemap support. Upgrade to Rojo v7.3.0+";
           } else if (
-            cleanStderr.includes("Found argument '--watch' which wasn't expected")
+            cleanStderr.includes(
+              "Found argument '--watch' which wasn't expected",
+            )
           ) {
             output +=
               "Your Rojo version doesn't have sourcemap watching support. Upgrade to Rojo v7.3.0+";
@@ -291,13 +328,8 @@ const startSourcemapGeneration = async (
             cleanStderr.includes("No such file or directory")
           ) {
             const rojoPath = config.get<string>("rojoPath") ?? "rojo";
-            output +=
-              `Rojo not found at "${rojoPath}". Install Rojo, configure the path in settings, or use the Studio Plugin instead`;
-            if (
-              !vscode.workspace
-                .getConfiguration("luau-lsp.plugin")
-                .get<boolean>("enabled")
-            ) {
+            output += `Rojo not found at "${rojoPath}". Install Rojo, configure the path in settings, or use the Studio Plugin instead`;
+            if (!getStudioPluginValue("enabled", false)) {
               options.push("Setup Plugin");
             }
             options.push("Configure Settings");
@@ -328,7 +360,7 @@ const startSourcemapGeneration = async (
     spawnChildProcess();
 
     const watcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(workspaceFolder, "**/*.{lua,luau}"),
+      new vscode.RelativePattern(workspaceFolder, getFilePattern()),
       /* ignoreCreateEvents = */ false,
       /* ignoreChangeEvents = */ true,
       /* ignoreDeleteEvents = */ false,
@@ -391,9 +423,7 @@ const startPluginServer = async (client: LanguageClient | undefined) => {
   const app = express();
   app.use(
     express.json({
-      limit: vscode.workspace
-        .getConfiguration("luau-lsp.plugin")
-        .get("maximumRequestBodySize", "3mb"),
+      limit: getStudioPluginValue("maximumRequestBodySize", "3mb"),
     }),
   );
 
@@ -421,7 +451,7 @@ const startPluginServer = async (client: LanguageClient | undefined) => {
 
   app.get("/get-file-paths", async (_req, res) => {
     try {
-      const uris = await vscode.workspace.findFiles("**/*.{lua,luau}");
+      const uris = await vscode.workspace.findFiles(getFilePattern());
       res.json({
         files: uris.map((uri: vscode.Uri) => uri.fsPath),
       });
@@ -441,14 +471,14 @@ const startPluginServer = async (client: LanguageClient | undefined) => {
         .status(413)
         .send(
           `Result is too large. Limit: ${bytesFormat(err.limit)}, Received: ${bytesFormat(err.received)}.\n` +
-            `Increase your available limits by updating the 'luau-lsp.plugin.maximumRequestBodySize' property in VSCode, or by reducing the include list in the Studio Plugin settings`,
+            `Increase your available limits by updating the 'luau-lsp.studioPlugin.maximumRequestBodySize' property in VSCode, or by reducing the include list in the Studio Plugin settings`,
         );
     }
   };
 
   app.use(errorHandler);
 
-  const port = vscode.workspace.getConfiguration("luau-lsp.plugin").get("port");
+  const port = getStudioPluginValue("port", 3667);
   pluginServer = app
     .listen(port, () => {
       vscode.window.showInformationMessage(
@@ -470,7 +500,7 @@ const startPluginServer = async (client: LanguageClient | undefined) => {
             } else if (value === "Change Port Configuration") {
               vscode.commands.executeCommand(
                 "workbench.action.openWorkspaceSettings",
-                "luau-lsp.plugin.port",
+                "luau-lsp.studioPlugin.port",
               );
             }
           });
@@ -522,7 +552,10 @@ export const onActivate = async (
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("luau-lsp.sourcemap")) {
+      if (
+        e.affectsConfiguration("luau-lsp.sourcemap") ||
+        e.affectsConfiguration("luau-lsp.analyzeLuaFiles")
+      ) {
         if (vscode.workspace.workspaceFolders) {
           for (const folder of vscode.workspace.workspaceFolders) {
             const config = vscode.workspace.getConfiguration(
@@ -540,12 +573,12 @@ export const onActivate = async (
             }
           }
         }
-      } else if (e.affectsConfiguration("luau-lsp.plugin")) {
-        if (
-          vscode.workspace
-            .getConfiguration("luau-lsp.plugin")
-            .get<boolean>("enabled")
-        ) {
+      } else if (
+        e.affectsConfiguration("luau-lsp.studioPlugin") ||
+        e.affectsConfiguration("luau-lsp.plugin") ||
+        e.affectsConfiguration("luau-lsp.analyzeLuaFiles")
+      ) {
+        if (getStudioPluginValue("enabled", false)) {
           stopPluginServer(true);
           startPluginServer(platformContext.client);
         } else {
@@ -581,13 +614,17 @@ export const preLanguageServerStart = async (
           outputUri: globalTypesUri(context, securityLevel, "Prod"),
         },
       },
-      documentation: [{ url: API_DOCS, outputUri: apiDocsUri(context) }],
+      documentation: [
+        { url: API_DOCS, outputUri: apiDocsUri(context) },
+        { url: COVERAGE_DOCS, outputUri: coverageDocsUri(context) },
+      ],
     };
   } else {
     return {
       definitions: undefined,
       documentation: [
         { url: LUAU_API_DOCS, outputUri: luauApiDocsUri(context) },
+        { url: COVERAGE_DOCS, outputUri: coverageDocsUri(context) },
       ],
     };
   }
@@ -597,9 +634,7 @@ export const postLanguageServerStart = async (
   platformContext: PlatformContext,
   _: vscode.ExtensionContext,
 ) => {
-  if (
-    vscode.workspace.getConfiguration("luau-lsp.plugin").get<boolean>("enabled")
-  ) {
+  if (getStudioPluginValue("enabled", false)) {
     startPluginServer(platformContext.client);
   }
 };

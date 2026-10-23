@@ -1,0 +1,63 @@
+{
+    "@luau/global/debug.getcoverage": {
+        "documentation": "Returns code coverage data for a function or script instance. Each entry contains the function name, line defined, nesting depth, and per-line hit counts. When passed a script instance, returns coverage for all functions in the file including local and unexported ones.",
+        "overloads": {
+            "<A..., R...>((A...) -> (R...)) -> {CoverageEntry}": "@luau/global/debug.getcoverage/overload/function",
+            "(any) -> {CoverageEntry}": "@luau/global/debug.getcoverage/overload/script"
+        },
+        "learn_more_link": "",
+        "code_sample": ""
+    },
+    "@luau/global/debug.getcoverage/overload/function": {
+        "documentation": "Returns code coverage data for a single function. The returned array contains one entry for the function itself, plus additional entries for any functions defined inside it.",
+        "params": [
+            {
+                "name": "fn",
+                "documentation": "@luau/global/debug.getcoverage/overload/function/param/0"
+            }
+        ],
+        "returns": [
+            "@luau/global/debug.getcoverage/overload/function/return/0"
+        ],
+        "learn_more_link": "",
+        "code_sample": ""
+    },
+    "@luau/global/debug.getcoverage/overload/function/param/0": {
+        "documentation": "The function to collect coverage data for."
+    },
+    "@luau/global/debug.getcoverage/overload/function/return/0": {
+        "documentation": "An array of CoverageEntry tables, one per function (including nested functions). Each entry has Function (name), LineDefined, Depth, and Hits (per-line counts where -1 = non-executable, 0 = not hit, >0 = hit count)."
+    },
+    "@luau/global/debug.getcoverage/overload/script": {
+        "documentation": "Returns code coverage data for all functions in a file via its script instance. Includes local and unexported functions not visible from the module table. The script must have been previously required for coverage data to be available.",
+        "params": [
+            {
+                "name": "script",
+                "documentation": "@luau/global/debug.getcoverage/overload/script/param/0"
+            }
+        ],
+        "returns": [
+            "@luau/global/debug.getcoverage/overload/script/return/0"
+        ],
+        "learn_more_link": "",
+        "code_sample": ""
+    },
+    "@luau/global/debug.getcoverage/overload/script/param/0": {
+        "documentation": "A script instance pointing to the file to collect coverage for."
+    },
+    "@luau/global/debug.getcoverage/overload/script/return/0": {
+        "documentation": "An array of CoverageEntry tables for every function in the file."
+    },
+    "@luau/global/debug.iscoverageenabled": {
+        "documentation": "Returns whether code coverage instrumentation is currently enabled. In Lune, coverage is enabled by default. Set LUNE_COVERAGE=0 to disable.",
+        "params": [],
+        "returns": [
+            "@luau/global/debug.iscoverageenabled/return/0"
+        ],
+        "learn_more_link": "",
+        "code_sample": ""
+    },
+    "@luau/global/debug.iscoverageenabled/return/0": {
+        "documentation": "True if coverage is enabled, false otherwise."
+    }
+}

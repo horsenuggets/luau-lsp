@@ -50,4 +50,9 @@ trace.json
 
 # Python venvs
 .venv
+__pycache__/
 /TODO.md
+
+# Worktrees
+/.worktrees/
+/.wt/

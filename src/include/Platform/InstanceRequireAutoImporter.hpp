@@ -11,11 +11,19 @@ class RobloxPlatform;
 namespace Luau::LanguageServer::AutoImports
 {
 
+struct FixedVariable
+{
+    std::string variableName;
+    Luau::AstExpr* expr = nullptr;
+    size_t endLine = 0;
+};
+
 struct RobloxFindImportsVisitor : FindImportsVisitor
 {
     std::optional<size_t> firstServiceDefinitionLine = std::nullopt;
     std::optional<size_t> lastServiceDefinitionLine = std::nullopt;
     std::map<std::string, Luau::AstStatLocal*> serviceLineMap{};
+    std::vector<FixedVariable> fixedVariables{};
 
     size_t findBestLineForService(const std::string& serviceName, size_t minimumLineNumber) const
     {
@@ -34,6 +42,9 @@ struct RobloxFindImportsVisitor : FindImportsVisitor
 
     bool handleLocal(Luau::AstStatLocal* local, Luau::AstLocal* localName, Luau::AstExpr* expr, unsigned int startLine, unsigned int endLine) override
     {
+        if (!isRequire(expr))
+            fixedVariables.emplace_back(FixedVariable{std::string(localName->name.value), expr, endLine});
+
         if (!isGetService(expr))
             return false;
 
@@ -74,7 +85,7 @@ struct InstanceRequireAutoImporterContext
     size_t hotCommentsLineNumber = 0;
     Luau::NotNull<const RobloxFindImportsVisitor> importsVisitor;
 
-    Luau::NotNull<const RobloxPlatform> platform;
+    Luau::NotNull<RobloxPlatform> platform;
 
     std::optional<std::function<bool(const std::string&)>> moduleFilter;
 };
@@ -91,7 +102,7 @@ struct InstanceRequireResult
 };
 
 /// Create a text edit for inserting a Roblox service import (e.g., `local Players = game:GetService("Players")`)
-lsp::TextEdit createServiceTextEdit(const std::string& name, size_t lineNumber, bool appendNewline = false);
+lsp::TextEdit createServiceTextEdit(const std::string& name, size_t lineNumber, bool appendNewline = false, bool useConst = false);
 /// Optimise an absolute require path by removing the "game/" prefix (e.g., "game/ReplicatedStorage/Foo" -> "ReplicatedStorage/Foo")
 std::string optimiseAbsoluteRequire(const std::string& path);
 
