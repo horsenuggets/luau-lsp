@@ -252,6 +252,81 @@ end
     CHECK_EQ(changes[0].range.end.line, 4);
 }
 
+TEST_CASE_FIXTURE(Fixture, "unreachable_code_fix_never_return_type")
+{
+    auto uri = newDocument("test.luau", R"(
+local function die(): never
+    error("fatal")
+end
+
+local function test()
+    die()
+    print("unreachable")
+end
+)");
+
+    lsp::CodeActionParams params;
+    params.textDocument.uri = uri;
+    params.range = {{7, 0}, {8, 0}};
+    params.context.only = {lsp::CodeActionKind::QuickFix};
+
+    auto result = workspace.codeAction(params, nullptr);
+
+    auto action = findCodeAction(result, "Remove unreachable code");
+    REQUIRE(action);
+    CHECK(action->kind == lsp::CodeActionKind::QuickFix);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unreachable_code_fix_never_return_type_method")
+{
+    auto uri = newDocument("test.luau", R"(
+local obj = {}
+function obj.die(): never
+    error("fatal")
+end
+
+local function test()
+    obj.die()
+    print("unreachable")
+end
+)");
+
+    lsp::CodeActionParams params;
+    params.textDocument.uri = uri;
+    params.range = {{8, 0}, {9, 0}};
+    params.context.only = {lsp::CodeActionKind::QuickFix};
+
+    auto result = workspace.codeAction(params, nullptr);
+
+    auto action = findCodeAction(result, "Remove unreachable code");
+    REQUIRE(action);
+    CHECK(action->kind == lsp::CodeActionKind::QuickFix);
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_unreachable_code_for_non_never_return_type")
+{
+    auto uri = newDocument("test.luau", R"(
+local function bar(): number
+    return 42
+end
+
+local function test()
+    bar()
+    print("reachable")
+end
+)");
+
+    lsp::CodeActionParams params;
+    params.textDocument.uri = uri;
+    params.range = {{7, 0}, {8, 0}};
+    params.context.only = {lsp::CodeActionKind::QuickFix};
+
+    auto result = workspace.codeAction(params, nullptr);
+
+    auto action = findCodeAction(result, "Remove unreachable code");
+    CHECK(!action);
+}
+
 TEST_CASE_FIXTURE(Fixture, "remove_all_unused_code_source_action")
 {
     auto uri = newDocument("test.luau", R"(
