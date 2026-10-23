@@ -72,8 +72,8 @@ jobs:
           VERSION=$(cat VERSION | tr -d '[:space:]')
           echo "Current version: $VERSION"
 
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "::error::Tag v$VERSION already exists. Please bump the version."
+          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag $VERSION already exists. Please bump the version."
             exit 1
           fi
 
