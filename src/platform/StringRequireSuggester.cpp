@@ -1,3 +1,4 @@
+#include "Luau/Common.h"
 #include "Luau/FileResolver.h"
 #include "Platform/StringRequireSuggester.hpp"
 #include "LSP/Workspace.hpp"
@@ -12,6 +13,11 @@ std::string FileRequireNode::getLabel() const
 std::string FileRequireNode::getPathComponent() const
 {
     auto name = getLabel();
+
+    // Directories are required by their full name, only strip the extension from files
+    if (isDirectory)
+        return name;
+
     if (auto pos = name.find_last_of('.'); pos != std::string::npos)
         name.erase(pos);
     return name;
@@ -31,8 +37,10 @@ std::unique_ptr<Luau::RequireNode> FileRequireNode::resolvePathToNode(const std:
     if (!basePath)
         return nullptr;
 
+    LUAU_ASSERT(mainRequirerNodeConfig);
+
     Uri relativeNodeUri;
-    if (auto luaurcAlias = resolveAlias(requireString, mainRequirerNodeConfig, *basePath))
+    if (auto luaurcAlias = resolveAlias(requireString, *mainRequirerNodeConfig, *basePath))
         relativeNodeUri = luaurcAlias.value();
     else if (isInitLuauFile(uri))
     {
@@ -75,7 +83,9 @@ std::vector<Luau::RequireAlias> FileRequireNode::getAvailableAliases() const
 {
     std::vector<Luau::RequireAlias> results;
 
-    for (const auto& [_, aliasInfo] : mainRequirerNodeConfig.aliases)
+    LUAU_ASSERT(mainRequirerNodeConfig);
+
+    for (const auto& [_, aliasInfo] : mainRequirerNodeConfig->aliases)
         results.emplace_back(Luau::RequireAlias{aliasInfo.originalCase, {"Alias"}});
 
     // Include @self alias for init.lua files
@@ -89,8 +99,8 @@ std::unique_ptr<Luau::RequireNode> StringRequireSuggester::getNode(const Luau::M
 {
     if (auto realUri = platform->resolveToRealPath(name))
     {
-        auto config = configResolver->getConfig(name, workspaceFolder->limits);
-        return std::make_unique<FileRequireNode>(*realUri, realUri->isDirectory(), workspaceFolder, config);
+        auto config = std::make_shared<const Luau::Config>(configResolver->getConfig(name, workspaceFolder->limits));
+        return std::make_unique<FileRequireNode>(*realUri, realUri->isDirectory(), workspaceFolder, std::move(config));
     }
 
     return nullptr;

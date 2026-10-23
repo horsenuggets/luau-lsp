@@ -1,9 +1,14 @@
 #include "Platform/RobloxPlatform.hpp"
-#include "LSP/ClientConfiguration.hpp"
+#include "Platform/RobloxStringRequireSuggester.hpp"
+#include "Platform/StringRequireAutoImporter.hpp"
 #include "LSP/JsonTomlSyntaxParser.hpp"
-#include "LSP/Workspace.hpp"
+#include "LSP/Completion.hpp"
+#include "LSP/Utils.hpp"
 
+#include "Luau/Config.h"
 #include "Luau/TimeTrace.h"
+
+#include <unordered_set>
 #include "LuauFileUtils.hpp"
 
 std::optional<Luau::ModuleName> RobloxPlatform::resolveToVirtualPath(const Uri& uri) const
@@ -105,6 +110,111 @@ std::optional<std::string> RobloxPlatform::readSourceCode(const Luau::ModuleName
     return source;
 }
 
+std::optional<AliasRequire> parseAliasRequire(const std::string& requiredString)
+{
+    if (requiredString.empty() || requiredString[0] != '@')
+        return std::nullopt;
+
+    size_t slashPos = requiredString.find('/');
+    std::string name = toLower(requiredString.substr(1, slashPos == std::string::npos ? std::string::npos : slashPos - 1));
+    std::string remainder = (slashPos == std::string::npos) ? "" : requiredString.substr(slashPos + 1);
+    return AliasRequire{std::move(name), std::move(remainder)};
+}
+
+static Luau::ModuleInfo joinVirtualPath(const std::string& base, const std::string& remainder)
+{
+    if (remainder.empty())
+        return Luau::ModuleInfo{base};
+    return Luau::ModuleInfo{base + "/" + remainder};
+}
+
+std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
+    const Luau::ModuleInfo* context, const std::string& requiredString, const Luau::TypeCheckLimits& limits)
+{
+    if (!context)
+        return std::nullopt;
+
+    if (auto alias = parseAliasRequire(requiredString))
+    {
+        const auto& luauConfig = fileResolver->getConfig(context->name, limits);
+        const bool userDefined = luauConfig.aliases.find(alias->name) != nullptr;
+
+        // `@game` is absolute: it is rooted at the DataModel and reads nothing from the requirer.
+        // Resolve it before the filesystem fallback, so a file that the sourcemap does not cover
+        // still resolves it. A user-defined `game` alias in `.luaurc` still wins.
+        if (alias->name == kGameAlias && !userDefined && rootSourceNode)
+            return joinVirtualPath(rootSourceNode->virtualPath, alias->remainder);
+
+        // Every other alias needs an instance context, so a file outside the sourcemap falls back
+        // to the filesystem.
+        if (!isVirtualPath(context->name))
+            return LSPPlatform::resolveStringRequire(context, requiredString, limits);
+
+        if (alias->name == "self")
+            return joinVirtualPath(context->name, alias->remainder);
+
+        if (userDefined)
+            return LSPPlatform::resolveStringRequire(context, requiredString, limits);
+
+        return std::nullopt;
+    }
+
+    if (!isVirtualPath(context->name))
+        return LSPPlatform::resolveStringRequire(context, requiredString, limits);
+
+    auto parentPath = getParentPath(context->name);
+    if (!parentPath)
+        return std::nullopt;
+
+    // Walk the path using string manipulation rather than SourceNode::walkPath because
+    // validation is handled downstream — walkPath rejects missing children via findChild.
+    std::string base = *parentPath;
+    size_t start = 0;
+    while (start < requiredString.size())
+    {
+        if (requiredString.compare(start, 2, "./") == 0)
+        {
+            start += 2;
+            continue;
+        }
+
+        size_t end = requiredString.find('/', start);
+        std::string segment = (end == std::string::npos) ? requiredString.substr(start) : requiredString.substr(start, end - start);
+        start = (end == std::string::npos) ? requiredString.size() : end + 1;
+
+        if (segment.empty() || segment == ".")
+            continue;
+
+        if (segment == "..")
+        {
+            auto parent = getParentPath(base);
+            if (!parent)
+                return std::nullopt;
+            base = *parent;
+        }
+        else
+        {
+            base += '/';
+            base += segment;
+        }
+    }
+
+    return Luau::ModuleInfo{base};
+}
+
+std::optional<Uri> RobloxPlatform::resolveDirectoryRedirect(const Uri& directory) const
+{
+    if (directory.resolvePath("init.luau").exists() || directory.resolvePath("init.lua").exists())
+        return std::nullopt;
+
+    // Use the sourcemap to resolve through project.json $path redirects (e.g. Wally packages)
+    if (auto it = directoryToSourceNodes.find(directory); it != directoryToSourceNodes.end())
+        if (auto scriptPath = it->second->getScriptFilePath())
+            return fileResolver->rootUri.resolvePath(*scriptPath);
+
+    return std::nullopt;
+}
+
 /// Modify the context so that game/Players/LocalPlayer items point to the correct place
 static std::string mapContext(const std::string& context)
 {
@@ -117,80 +227,170 @@ static std::string mapContext(const std::string& context)
     return context;
 }
 
-std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
-    const Luau::ModuleInfo* context, const std::string& requiredString, const Luau::TypeCheckLimits& limits)
+std::unique_ptr<Luau::RequireSuggester> RobloxPlatform::getRequireSuggester()
 {
-    if (!context)
+    return std::make_unique<RobloxStringRequireSuggester>(workspaceFolder, fileResolver, this);
+}
+
+static const SourceNode* getServiceNode(const SourceNode* n)
+{
+    const SourceNode* prev = n;
+    while (n && n->parent)
+    {
+        prev = n;
+        n = n->parent;
+    }
+    return prev;
+}
+
+static std::optional<std::pair<std::string, const char*>> computeSourcemapRequirePath(
+    const RobloxPlatform* platform,
+    const SourceNode* fromNode,
+    const std::unordered_set<const SourceNode*>& fromAncestors,
+    const SourceNode* fromService,
+    const Luau::ModuleName& target,
+    ImportRequireStyle style,
+    const Luau::LanguageServer::AutoImports::AliasMap& availableAliases)
+{
+    auto targetIt = platform->virtualPathsToSourceNodes.find(target);
+    if (targetIt == platform->virtualPathsToSourceNodes.end())
         return std::nullopt;
 
-    auto contextPath = resolveToRealPath(context->name);
-    if (!contextPath)
+    const SourceNode* targetNode = targetIt->second;
+
+    if (!targetNode->isScript())
         return std::nullopt;
 
-    auto baseUri = contextPath->parent();
-    if (!baseUri)
+    if (!isScriptContextCompatible(fromNode->scriptContext, targetNode->scriptContext))
         return std::nullopt;
 
-    ClientConfiguration clientConfig;
-    if (fileResolver->client)
-        clientConfig = fileResolver->client->getConfiguration(fileResolver->rootUri);
-
-    if (isInitLuauFile(*contextPath) && !clientConfig.require.useOriginalRequireByStringSemantics)
+    // Compute absolute path: prefer user-defined aliases, then fall back to @game/<virtual path>
+    auto computeAbsolute = [&]() -> std::pair<std::string, const char*>
     {
-        baseUri = baseUri->parent();
-        if (!baseUri)
-            return std::nullopt;
-    }
-
-    auto fileUri = baseUri->resolvePath(requiredString);
-
-    auto luauConfig = fileResolver->getConfig(context->name, limits);
-    if (auto aliasedPath = resolveAlias(requiredString, luauConfig, *contextPath->parent()))
-    {
-        fileUri = aliasedPath.value();
-    }
-
-    // Handle "init.luau" files in a directory
-    if (fileUri.isDirectory())
-    {
-        auto initLuau = fileUri.resolvePath("init.luau");
-        auto initLua = fileUri.resolvePath("init.lua");
-
-        if (initLuau.exists() || initLua.exists())
+        if (auto realPath = platform->getRealPathFromSourceNode(targetNode))
         {
-            fileUri = fileUri.resolvePath("init");
-        }
-        else if (auto it = directoryToSourceNodes.find(fileUri); it != directoryToSourceNodes.end())
-        {
-            // Use the sourcemap to resolve through project.json $path redirects
-            if (auto scriptPath = it->second->getScriptFilePath())
-            {
-                fileUri = fileResolver->rootUri.resolvePath(*scriptPath);
-                return Luau::ModuleInfo{fileResolver->getModuleName(fileUri)};
-            }
-            else
-            {
-                fileUri = fileUri.resolvePath("init");
-            }
-        }
-        else
-        {
-            fileUri = fileUri.resolvePath("init");
-        }
-    }
+            // An init.luau file represents its containing directory, so alias the directory instead
+            if (isInitLuauFile(*realPath))
+                realPath = realPath->parent().value_or(*realPath);
 
-    // Add file endings
-    if (fileUri.extension() != ".luau" && fileUri.extension() != ".lua")
+            if (auto aliasPath = Luau::LanguageServer::AutoImports::computeBestAliasedPath(*realPath, availableAliases))
+                return {*aliasPath, SortText::AutoImportsAbsolute};
+        }
+
+        std::string path = targetNode->virtualPath;
+        if (Luau::startsWith(path, "game/"))
+            path = path.substr(5);
+        return {"@game/" + path, SortText::AutoImportsAbsolute};
+    };
+
+    if (style == ImportRequireStyle::AlwaysAbsolute)
+        return computeAbsolute();
+
+    // If fromNode is a DataModel ancestor of targetNode, use @self/ — the child module
+    // is always in the same service subtree, so a relative path is always appropriate.
+    if (fromNode->isAncestorOf(targetNode))
     {
-        auto fileUriWithExtension = fileUri;
-        fileUriWithExtension.path = fileUri.path + ".luau";
-        if (!fileUriWithExtension.exists())
-            fileUri.path += ".lua";
-        else
-            fileUri.path = fileUriWithExtension.path;
+        std::vector<std::string> pathComponents;
+        for (auto m = targetNode; m != fromNode; m = m->parent)
+            pathComponents.push_back(m->name);
+        std::reverse(pathComponents.begin(), pathComponents.end());
+
+        std::string selfPath = "@self";
+        for (const auto& component : pathComponents)
+            selfPath += "/" + component;
+
+        return std::pair{selfPath, SortText::AutoImports};
     }
 
-    return Luau::ModuleInfo{fileResolver->getModuleName(fileUri)};
+    // Find lowest common ancestor
+    const SourceNode* commonAncestor = nullptr;
+    for (auto n = targetNode; n; n = n->parent)
+    {
+        if (fromAncestors.count(n))
+        {
+            commonAncestor = n;
+            break;
+        }
+    }
+    if (!commonAncestor)
+        return computeAbsolute();
+
+    // Count hops up from fromNode->parent to common ancestor.
+    // Safe: commonAncestor is guaranteed to be in fromAncestors, so
+    // n will reach it before becoming nullptr.
+    int hopsUp = 0;
+    for (auto n = fromNode->parent; n != commonAncestor; n = n->parent)
+        hopsUp++;
+
+    // Build path down from common ancestor to target
+    std::vector<std::string> pathDown;
+    for (auto n = targetNode; n != commonAncestor; n = n->parent)
+        pathDown.push_back(n->name);
+    std::reverse(pathDown.begin(), pathDown.end());
+
+    std::string relativePath;
+    if (hopsUp == 0)
+        relativePath = "./";
+    else
+        for (int i = 0; i < hopsUp; i++)
+            relativePath += "../";
+
+    for (size_t i = 0; i < pathDown.size(); i++)
+    {
+        if (i > 0)
+            relativePath += "/";
+        relativePath += pathDown[i];
+    }
+
+    if (style == ImportRequireStyle::AlwaysRelative)
+        return std::pair{relativePath, SortText::AutoImports};
+
+    // Auto: use relative if same service subtree, otherwise @game
+    if (fromService == getServiceNode(targetNode))
+        return std::pair{relativePath, SortText::AutoImports};
+
+    return computeAbsolute();
+}
+
+Luau::LanguageServer::AutoImports::ModuleVisitor RobloxPlatform::getAutoImportsModuleVisitor(const Luau::ModuleName& from)
+{
+    if (!rootSourceNode || virtualPathsToSourceNodes.find(from) == virtualPathsToSourceNodes.end())
+        return LSPPlatform::getAutoImportsModuleVisitor(from);
+
+    return [this](const std::function<void(const Luau::ModuleName&)>& visit)
+    {
+        for (const auto& [name, _] : virtualPathsToSourceNodes)
+            visit(name);
+    };
+}
+
+std::optional<Luau::LanguageServer::AutoImports::RequirePathComputer> RobloxPlatform::getAutoImportsRequirePathComputer(
+    const Luau::ModuleName& from, ImportRequireStyle style)
+{
+    if (!rootSourceNode)
+        return std::nullopt;
+
+    auto fromIt = virtualPathsToSourceNodes.find(from);
+    if (fromIt == virtualPathsToSourceNodes.end())
+        return std::nullopt;
+
+    const SourceNode* fromNode = fromIt->second;
+
+    // Precompute ancestors of fromNode once, reused across all candidate modules
+    std::unordered_set<const SourceNode*> fromAncestors;
+    for (auto n = fromNode->parent; n; n = n->parent)
+        fromAncestors.insert(n);
+    const SourceNode* fromService = getServiceNode(fromNode);
+
+    auto availableAliases = fileResolver->getConfig(from, workspaceFolder->limits).aliases;
+
+    return [this, fromNode, fromAncestors = std::move(fromAncestors), fromService, style,
+               availableAliases = std::move(availableAliases)](
+               const Luau::ModuleName& /*from*/, const Luau::ModuleName& target)
+        -> std::optional<std::pair<std::string, const char*>>
+    {
+        return computeSourcemapRequirePath(this, fromNode, fromAncestors, fromService, target, style, availableAliases);
+    };
 }
 
 std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node, const Luau::TypeCheckLimits& limits)

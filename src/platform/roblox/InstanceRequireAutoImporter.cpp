@@ -3,13 +3,15 @@
 #include "LSP/Completion.hpp"
 #include "Platform/RobloxPlatform.hpp"
 
+#include <algorithm>
+
 namespace Luau::LanguageServer::AutoImports
 {
 
-lsp::TextEdit createServiceTextEdit(const std::string& name, size_t lineNumber, bool appendNewline)
+lsp::TextEdit createServiceTextEdit(const std::string& name, size_t lineNumber, bool appendNewline, bool useConst)
 {
     auto range = lsp::Range{{lineNumber, 0}, {lineNumber, 0}};
-    auto importText = "local " + name + " = game:GetService(\"" + name + "\")\n";
+    auto importText = std::string(declarationKeyword(useConst)) + name + " = game:GetService(\"" + name + "\")\n";
     if (appendNewline)
         importText += "\n";
     return {range, importText};
@@ -30,10 +32,67 @@ std::string optimiseAbsoluteRequire(const std::string& path)
     return path;
 }
 
+static std::optional<Luau::ModuleName> resolveFixedVariablePath(
+    RobloxPlatform& platform, const Luau::ModuleName& from, Luau::AstExpr* expr, const Luau::TypeCheckLimits& limits)
+{
+    Luau::AstExpr* dependent = nullptr;
+    if (auto* index = expr->as<Luau::AstExprIndexName>())
+        dependent = index->expr;
+    else if (auto* indexExpr = expr->as<Luau::AstExprIndexExpr>())
+        dependent = indexExpr->expr;
+    else if (auto* call = expr->as<Luau::AstExprCall>(); call && call->self)
+    {
+        if (auto* func = call->func->as<Luau::AstExprIndexName>())
+            dependent = func->expr;
+        else
+            return std::nullopt;
+    }
+
+    std::optional<Luau::ModuleInfo> info;
+    if (dependent)
+    {
+        auto context = resolveFixedVariablePath(platform, from, dependent, limits);
+        if (!context)
+            return std::nullopt;
+        Luau::ModuleInfo contextInfo{*context};
+        info = platform.resolveModule(&contextInfo, expr, limits);
+    }
+    else
+    {
+        Luau::ModuleInfo moduleContext{from};
+        info = platform.resolveModule(&moduleContext, expr, limits);
+    }
+
+    if (info && !info->name.empty())
+        return info->name;
+    return std::nullopt;
+}
+
+struct ResolvedFixedVariable
+{
+    Luau::ModuleName path;
+    std::string variableName;
+    size_t endLine = 0;
+};
+
 std::vector<InstanceRequireResult> computeAllInstanceRequires(const InstanceRequireAutoImporterContext& ctx)
 {
     std::vector<InstanceRequireResult> results;
     size_t minimumLineNumber = computeMinimumLineNumberForRequire(*ctx.importsVisitor, ctx.hotCommentsLineNumber);
+
+    std::vector<ResolvedFixedVariable> resolvedFixedVariables;
+    if (ctx.config->requireStyle == ImportRequireStyle::NearestAbsolute)
+    {
+        for (const auto& fixedVariable : ctx.importsVisitor->fixedVariables)
+        {
+            if (auto resolved = resolveFixedVariablePath(*ctx.platform, ctx.from, fixedVariable.expr, ctx.workspaceFolder->limits))
+                resolvedFixedVariables.push_back({*resolved, fixedVariable.variableName, fixedVariable.endLine});
+        }
+    }
+
+    ScriptContext callerContext = ScriptContext::Shared;
+    if (auto it = ctx.platform->virtualPathsToSourceNodes.find(ctx.from); it != ctx.platform->virtualPathsToSourceNodes.end())
+        callerContext = it->second->scriptContext;
 
     for (auto& [path, node] : ctx.platform->virtualPathsToSourceNodes)
     {
@@ -47,6 +106,45 @@ std::vector<InstanceRequireResult> computeAllInstanceRequires(const InstanceRequ
         if (auto scriptFilePath = ctx.platform->getRealPathFromSourceNode(node);
             scriptFilePath && ctx.workspaceFolder->isIgnoredFileForAutoImports(*scriptFilePath))
             continue;
+
+        if (!isScriptContextCompatible(callerContext, node->scriptContext))
+            continue;
+
+        // Require through the closest (deepest) anchor the module is a descendant of, e.g.
+        // `require(Main.X.Y)`; fall through to the standard style computation when there is none.
+        if (ctx.config->requireStyle == ImportRequireStyle::NearestAbsolute)
+        {
+            const ResolvedFixedVariable* bestAnchor = nullptr;
+            for (const auto& fixedVariable : resolvedFixedVariables)
+            {
+                if (!Luau::startsWith(path, fixedVariable.path + "/"))
+                    continue;
+                if (!bestAnchor || fixedVariable.path.size() > bestAnchor->path.size())
+                    bestAnchor = &fixedVariable;
+            }
+
+            if (bestAnchor)
+            {
+                auto remainder = path.substr(bestAnchor->path.size() + 1);
+                auto require = convertToScriptPath(bestAnchor->variableName + "/" + remainder);
+
+                size_t anchorMinimum = std::max(minimumLineNumber, bestAnchor->endLine + 1);
+                size_t lineNumber = computeBestLineForRequire(*ctx.importsVisitor, *ctx.textDocument, require, anchorMinimum);
+
+                bool prependNewline = ctx.config->separateGroupsWithLine &&
+                                      (ctx.importsVisitor->shouldPrependNewline(lineNumber) || lineNumber == bestAnchor->endLine + 1);
+
+                results.emplace_back(InstanceRequireResult{
+                    name,
+                    path,
+                    require,
+                    std::nullopt,
+                    createRequireTextEdit(name, require, lineNumber, prependNewline, ctx.config->useConst),
+                    SortText::AutoImportsAbsolute,
+                });
+                continue;
+            }
+        }
 
         std::string requirePath;
         std::optional<std::pair<std::string, lsp::TextEdit>> serviceEdit;
@@ -83,7 +181,7 @@ std::vector<InstanceRequireResult> computeAllInstanceRequires(const InstanceRequ
                 // so we use `.value_or(serviceLineNumber)` to ensure it equals 0 and a newline is added
                 if (ctx.config->separateGroupsWithLine && ctx.importsVisitor->firstRequireLine.value_or(serviceLineNumber) - serviceLineNumber == 0)
                     appendNewline = true;
-                serviceEdit = {service, createServiceTextEdit(service, serviceLineNumber, appendNewline)};
+                serviceEdit = {service, createServiceTextEdit(service, serviceLineNumber, appendNewline, ctx.config->useConst)};
             }
         }
 
@@ -95,7 +193,7 @@ std::vector<InstanceRequireResult> computeAllInstanceRequires(const InstanceRequ
             path,
             require,
             serviceEdit,
-            createRequireTextEdit(name, require, lineNumber, prependNewline),
+            createRequireTextEdit(name, require, lineNumber, prependNewline, ctx.config->useConst),
             isRelative ? SortText::AutoImports : SortText::AutoImportsAbsolute,
         });
     }
