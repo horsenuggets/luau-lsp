@@ -185,6 +185,8 @@ declare script: {
 
 declare executable: string?
 
+declare function warn<T...>(...: T...)
+
 declare task: {
 	cancel: (thread: thread) -> (),
 	defer: <A..., R...>(threadOrFunction: thread | (A...) -> R..., A...) -> thread,
