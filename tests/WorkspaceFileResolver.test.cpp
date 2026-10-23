@@ -696,7 +696,7 @@ TEST_CASE_FIXTURE(Fixture, "string_require_prefers_init_luau_over_sourcemap")
 
     REQUIRE(resolved.has_value());
     // init.luau exists, so it should resolve directly to the file path (not via sourcemap)
-    CHECK(endsWith(resolved->name, "/project/mymodule/init.luau"));
+    CHECK_EQ(Uri::file(resolved->name), Uri::file(initPath));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_require_falls_through_without_sourcemap_entry")
@@ -718,8 +718,7 @@ TEST_CASE_FIXTURE(Fixture, "string_require_falls_through_without_sourcemap_entry
 
     REQUIRE(resolved.has_value());
     // Falls through to default init behavior (even though init.luau doesn't exist)
-    bool endsWithInit = endsWith(resolved->name, "/project/mymodule/init.luau") || endsWith(resolved->name, "/project/mymodule/init.lua");
-    CHECK(endsWithInit);
+    CHECK_EQ(Uri::file(resolved->name), Uri::file(tempDir.path()).resolvePath("project/mymodule/init.lua"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_require_resolves_wally_package_via_sourcemap")
