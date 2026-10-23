@@ -4,7 +4,7 @@
 
 -- Datatype classes
 
-declare class Color3
+declare extern type Color3 with
 	B: number
 	G: number
 	R: number
@@ -17,7 +17,7 @@ declare class Color3
 	r: number
 end
 
-declare class Vector2
+declare extern type Vector2 with
 	Magnitude: number
 	Unit: Vector2
 	X: number
@@ -45,7 +45,7 @@ declare class Vector2
 	y: number
 end
 
-declare class Vector3
+declare extern type Vector3 with
 	Magnitude: number
 	Unit: Vector3
 	X: number
@@ -75,7 +75,7 @@ declare class Vector3
 	z: number
 end
 
-declare class CFrame
+declare extern type CFrame with
 	LookVector: Vector3
 	Position: Vector3
 	RightVector: Vector3
@@ -118,7 +118,7 @@ declare class CFrame
 	z: number
 end
 
-declare class NumberRange
+declare extern type NumberRange with
 	Max: number
 	Min: number
 end
@@ -184,6 +184,8 @@ declare script: {
 }
 
 declare executable: string?
+
+declare function warn<T...>(...: T...)
 
 declare task: {
 	cancel: (thread: thread) -> (),

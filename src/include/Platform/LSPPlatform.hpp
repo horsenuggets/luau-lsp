@@ -2,6 +2,7 @@
 
 #include "LSP/ClientConfiguration.hpp"
 #include "LSP/TextDocument.hpp"
+#include "Platform/StringRequireTypes.hpp"
 #include "Luau/Ast.h"
 #include "Luau/Autocomplete.h"
 #include "Luau/Error.h"
@@ -48,6 +49,13 @@ public:
 
     virtual std::unique_ptr<Luau::RequireSuggester> getRequireSuggester();
 
+    virtual Luau::LanguageServer::AutoImports::ModuleVisitor getAutoImportsModuleVisitor(const Luau::ModuleName& from);
+    virtual std::optional<Luau::LanguageServer::AutoImports::RequirePathComputer> getAutoImportsRequirePathComputer(
+        const Luau::ModuleName& from, ImportRequireStyle style)
+    {
+        return std::nullopt;
+    }
+
     /// The name points to a virtual path (i.e. for Roblox, game/ or ProjectRoot/)
     [[nodiscard]] virtual bool isVirtualPath(const Luau::ModuleName& name) const
     {
@@ -70,6 +78,12 @@ public:
 
     // For Wally wrapper modules, returns the inner module that types are re-exported from
     [[nodiscard]] virtual std::optional<Luau::ModuleName> getReexportSource(const Luau::ModuleName& wrapperModule) const
+    {
+        return std::nullopt;
+    }
+
+    // For a required directory without an init file, returns the file it redirects to (e.g. via a project.json $path)
+    [[nodiscard]] virtual std::optional<Uri> resolveDirectoryRedirect(const Uri& directory) const
     {
         return std::nullopt;
     }
