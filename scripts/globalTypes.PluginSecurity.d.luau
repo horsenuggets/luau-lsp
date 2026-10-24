@@ -8884,7 +8884,7 @@ declare project: {
     Parent: any,
     GetFullName: (self: any) -> string,
     [string]: any,
-}
+}?
 declare plugin: Plugin
 declare game: DataModel
 
