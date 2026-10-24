@@ -1,6 +1,7 @@
 #include "doctest.h"
 #include "Fixture.h"
 #include "LSP/SemanticTokens.hpp"
+#include "RobloxTypes.hpp"
 
 TEST_SUITE_BEGIN("SemanticTokens");
 
@@ -157,6 +158,27 @@ local x: { string } = {}
     auto real = getSemanticToken(tokens, Luau::Position{1, 11});
     REQUIRE(real);
     CHECK_EQ(real->tokenType, lsp::SemanticTokenTypes::Type);
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_project_global_is_highlighted_like_script_with_roblox_definitions")
+{
+    REQUIRE(ROBLOX_GLOBAL_TYPES != nullptr);
+    loadDefinition("@roblox", ROBLOX_GLOBAL_TYPES);
+
+    auto result = check(R"(
+        local _ = script.Name
+        local _ = project.Source
+    )");
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+
+    auto tokens = getSemanticTokens(workspace.frontend, getMainModule(), getMainSourceModule());
+    auto script = getSemanticToken(tokens, Luau::Position{1, 18});
+    auto project = getSemanticToken(tokens, Luau::Position{2, 18});
+    REQUIRE(script);
+    REQUIRE(project);
+    CHECK_EQ(project->tokenType, script->tokenType);
+    CHECK_EQ(project->tokenModifiers, script->tokenModifiers);
+    CHECK_EQ(project->tokenModifiers, lsp::SemanticTokenModifiers::DefaultLibrary | lsp::SemanticTokenModifiers::Readonly);
 }
 
 TEST_SUITE_END();
