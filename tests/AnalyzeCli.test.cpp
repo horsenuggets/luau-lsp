@@ -242,6 +242,9 @@ TEST_CASE("lune_builtin_definitions_are_registered_in_workspace")
         local position: Vector3 = Vector3.new(1, 2, 3)
         local _ = position.Magnitude
         local _ = script.Name
+        local _ = project.Name
+        local _ = project.Source.Parent
+        local _ = project:GetFullName()
     )");
 
     CliClient client;
