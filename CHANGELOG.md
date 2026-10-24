@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## `1.70.1-horse.1.9`
+
+### Fixed
+
+- Fixed `rokit install` failing on macOS since `1.70.1-horse.1.7`, because rokit picked a `.vsix` over the server zip. Releases now also include `luau-lsp-macos-arm64.zip` and `luau-lsp-macos-x86_64.zip`, which are copies of `luau-lsp-macos.zip`
+
 ## `1.70.1-horse.1.8`
 
 ### Added
