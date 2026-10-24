@@ -417,7 +417,7 @@
         },
         {
           "name": "constant.language.luau",
-          "match": "(?<![^.]\\.|:)\\b(game|plugin|shared|script|workspace|Enum(?:\\.\\w+){0,2})\\b"
+          "match": "(?<![^.]\\.|:)\\b(game|plugin|project|shared|script|workspace|Enum(?:\\.\\w+){0,2})\\b"
         }
       ]
     },
