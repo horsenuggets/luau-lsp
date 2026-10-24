@@ -1,6 +1,7 @@
 #include "doctest.h"
 #include "Fixture.h"
 #include "LSP/SemanticTokens.hpp"
+#include "RobloxTypes.hpp"
 
 TEST_SUITE_BEGIN("SemanticTokens");
 
@@ -157,6 +158,70 @@ local x: { string } = {}
     auto real = getSemanticToken(tokens, Luau::Position{1, 11});
     REQUIRE(real);
     CHECK_EQ(real->tokenType, lsp::SemanticTokenTypes::Type);
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_project_global_is_highlighted_like_script_with_roblox_definitions")
+{
+    REQUIRE(ROBLOX_GLOBAL_TYPES != nullptr);
+    loadDefinition("@roblox", ROBLOX_GLOBAL_TYPES);
+
+    // Roblox never defines project, so strict code checks it for nil before using it
+    auto result = check(R"(
+        local _ = script.Name
+        local _ = project and project.Source
+    )");
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+
+    auto tokens = getSemanticTokens(workspace.frontend, getMainModule(), getMainSourceModule());
+    auto script = getSemanticToken(tokens, Luau::Position{1, 18});
+    auto project = getSemanticToken(tokens, Luau::Position{2, 18});
+    REQUIRE(script);
+    REQUIRE(project);
+    CHECK_EQ(project->tokenType, script->tokenType);
+    CHECK_EQ(project->tokenModifiers, script->tokenModifiers);
+    CHECK_EQ(project->tokenModifiers, lsp::SemanticTokenModifiers::DefaultLibrary | lsp::SemanticTokenModifiers::Readonly);
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_project_global_must_be_nil_checked_in_strict_code_with_roblox_definitions")
+{
+    REQUIRE(ROBLOX_GLOBAL_TYPES != nullptr);
+    loadDefinition("@roblox", ROBLOX_GLOBAL_TYPES);
+
+    auto result = check(R"(
+        local _ = project.Source
+    )");
+    LUAU_LSP_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Luau::get<Luau::OptionalValueAccess>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_project_global_can_be_used_after_a_nil_check_with_roblox_definitions")
+{
+    REQUIRE(ROBLOX_GLOBAL_TYPES != nullptr);
+    loadDefinition("@roblox", ROBLOX_GLOBAL_TYPES);
+
+    auto result = check(R"(
+        if not project then
+            return
+        end
+        local _ = project.Source
+    )");
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_project_global_can_be_used_directly_in_nonstrict_code_with_roblox_definitions")
+{
+    // Lune scripts opened in a Roblox project are usually non-strict. The new solver allows
+    // optional access there, while the old solver still reports it.
+    if (!FFlag::LuauSolverV2)
+        return;
+
+    REQUIRE(ROBLOX_GLOBAL_TYPES != nullptr);
+    loadDefinition("@roblox", ROBLOX_GLOBAL_TYPES);
+
+    auto result = check(R"(--!nonstrict
+        local _ = project.Source
+    )");
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();
