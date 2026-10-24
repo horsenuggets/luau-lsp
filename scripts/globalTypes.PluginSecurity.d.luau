@@ -8879,6 +8879,12 @@ declare function stats(): Stats
 declare function Stats(): Stats
 
 declare script: LuaSourceContainer
+declare project: {
+    Name: string,
+    Parent: any,
+    GetFullName: (self: any) -> string,
+    [string]: any,
+}?
 declare plugin: Plugin
 declare game: DataModel
 

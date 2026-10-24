@@ -60,7 +60,18 @@ LUAU_SNIPPET_PATCHES = {
 
     "declare game: any": "declare game: DataModel",
     "declare workspace: any": "declare workspace: Workspace",
-    "declare script: any": "declare script: LuaSourceContainer",
+    # Lune's project global, the nearest Git repository containing the script. Scripts in
+    # Roblox projects often run in Lune, so declare it next to script with the shape Lune
+    # provides. Roblox itself never defines it, so it's optional, and strict code that can
+    # run in Roblox has to check it for nil first.
+    "declare script: any":
+        "declare script: LuaSourceContainer\n"
+        "declare project: {\n"
+        "    Name: string,\n"
+        "    Parent: any,\n"
+        "    GetFullName: (self: any) -> string,\n"
+        "    [string]: any,\n"
+        "}?",
 
     "declare Delay: typeof(delay)":
         "@[deprecated{ use = \"task.delay\" }]\ndeclare function Delay(delay: number?, callback: (dt: number, gt: number) -> ())",
