@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## `1.70.1-horse.1.10`
+
+### Added
+
+- The Roblox definitions now declare Lune's `project` global next to `script`, since scripts in Roblox projects often run in Lune. Projects no longer need to list `project` under `globals` in `.luaurc`, and it gets the same highlighting as `script` in the editor
+
 ## `1.70.1-horse.1.9`
 
 ### Fixed
