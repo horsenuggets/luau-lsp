@@ -171,6 +171,13 @@ jobs:
             cp "$dir"/*.vsix release-assets/
           done
 
+          # The macOS binary is universal, but rokit ranks assets that name both the OS
+          # and the CPU above ones that only name the OS. Without these copies it picks
+          # the darwin .vsix files, which it can't extract.
+          for arch in arm64 x86_64; do
+            cp release-assets/luau-lsp-macos.zip "release-assets/luau-lsp-macos-$arch.zip"
+          done
+
       - name: Create git tag
         run: |
           git config user.name "github-actions[bot]"
