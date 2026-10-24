@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## `1.70.1-horse.1.8`
+
+### Added
+
+- Added support for Lune's `project` global, which refers to the nearest Git repository containing the current script. The grammar highlights it like `script`, and `luau-lsp analyze --platform=lune` declares it with the same type
+
 ## `1.70.1-horse.1.7`
 
 ### Fixed
