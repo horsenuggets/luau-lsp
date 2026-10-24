@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.5"
 
   required_providers {
     github = {
@@ -11,6 +11,13 @@ terraform {
 
 provider "github" {
   owner = "horsenuggets"
+  # Authenticates via the GITHUB_TOKEN environment variable.
+}
+
+# Adopt the existing repository instead of trying to create it.
+import {
+  to = module.repo.github_repository.repo
+  id = "luau-lsp"
 }
 
 module "repo" {
