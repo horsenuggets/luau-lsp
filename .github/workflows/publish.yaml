@@ -53,15 +53,20 @@ jobs:
         include:
           - os: windows-latest
             artifact-name: luau-lsp-win64
+            code-targets: win32-x64
 
           - os: ubuntu-22.04
             artifact-name: luau-lsp-linux-x86_64
+            code-targets: linux-x64
 
           - os: ubuntu-22.04-arm
             artifact-name: luau-lsp-linux-arm64
+            code-targets: linux-arm64
 
+          # The macOS server is a universal binary, so it serves both targets.
           - os: macos-latest
             artifact-name: luau-lsp-macos
+            code-targets: darwin-arm64 darwin-x64
 
     steps:
       - name: Checkout code
@@ -97,40 +102,53 @@ jobs:
             zip ../dist/luau-lsp.zip *
           fi
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact-name }}
-          path: dist/luau-lsp.zip
-
-  build-extension:
-    name: Build extension
-    needs: [init]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # The extension starts the server from bin/, so every VSIX must bundle the binary
+      # built for its platform.
+      - name: Copy server into extension
+        shell: bash
+        run: |
+          mkdir -p editors/code/bin
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp "build/RelWithDebInfo/luau-lsp.exe" editors/code/bin/server.exe
+          else
+            cp "build/luau-lsp" editors/code/bin/server
+            chmod +x editors/code/bin/server
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v4
 
-      - name: Install dependencies
+      - name: Install extension dependencies
         run: npm ci
         working-directory: editors/code
 
       - name: Package extension
-        run: npx @vscode/vsce package
+        shell: bash
         working-directory: editors/code
+        run: |
+          for target in ${{ matrix.code-targets }}; do
+            npx @vscode/vsce package --target "$target" -o "../../dist/luau-lsp-$target.vsix"
+          done
 
-      - name: Upload extension
+      - name: Verify server is bundled
+        shell: bash
+        run: |
+          for target in ${{ matrix.code-targets }}; do
+            unzip -l "dist/luau-lsp-$target.vsix" | grep -E "extension/bin/server(\.exe)?$" \
+              || { echo "::error::The \"$target\" VSIX does not contain the server binary."; exit 1; }
+          done
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vscode-extension
-          path: editors/code/*.vsix
+          name: ${{ matrix.artifact-name }}
+          path: |
+            dist/luau-lsp.zip
+            dist/*.vsix
 
   release-github:
     name: Create GitHub release
-    needs: [init, build, build-extension]
+    needs: [init, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -150,8 +168,8 @@ jobs:
           for dir in artifacts/luau-lsp-*; do
             name=$(basename "$dir")
             cp "$dir/luau-lsp.zip" "release-assets/$name.zip"
+            cp "$dir"/*.vsix release-assets/
           done
-          cp artifacts/vscode-extension/*.vsix release-assets/
 
       - name: Create git tag
         run: |
