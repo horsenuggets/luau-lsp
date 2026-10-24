@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## `1.70.1-horse.1.7`
+
+### Fixed
+
+- Fixed the released VS Code extension not starting because the `.vsix` didn't bundle the server binary. Releases now ship one `.vsix` per platform with its server included
+
 ## `1.70.1-horse.1.6`
 
 ### Added
