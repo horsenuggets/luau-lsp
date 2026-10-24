@@ -56,3 +56,10 @@ __pycache__/
 # Worktrees
 /.worktrees/
 /.wt/
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+tfplan
