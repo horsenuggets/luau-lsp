@@ -187,12 +187,16 @@ declare NumberRange: {
 	new: ((value: number) -> NumberRange) & ((min: number, max: number) -> NumberRange),
 }
 
-declare script: {
+type ScriptReference = {
 	Name: string,
 	Parent: any,
 	GetFullName: (self: any) -> string,
 	[string]: any,
 }
+
+declare script: ScriptReference
+
+declare project: ScriptReference
 
 declare executable: string?
 
