@@ -24,6 +24,9 @@ module "repo" {
   source     = "../submodules/luau-cicd/Terraform/Modules/LuauRepo"
   repository = "luau-lsp"
 
+  # Upstream sync PRs land with a merge commit to keep upstream history on main.
+  allow_merge_commit = true
+
   main_checks = [
     "Build Server (macos-latest)",
     "Build Server (ubuntu-22.04)",
