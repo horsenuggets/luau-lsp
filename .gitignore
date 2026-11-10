@@ -1,7 +1,10 @@
 .cache
 .DS_Store
 .idea
-.vscode/settings.json
+# Keep shared formatter settings, but ignore other local VS Code files.
+/.vscode/*
+!/.vscode/extensions.json
+!/.vscode/settings.json
 /.vs
 /build
 cmake-build-debug-visual-studio/
