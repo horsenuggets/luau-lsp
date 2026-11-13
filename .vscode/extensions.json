@@ -4,6 +4,7 @@
   "recommendations": [
     "amodio.tsl-problem-matcher",
     "dbaeumer.vscode-eslint",
+    "hashicorp.hcl",
     "hashicorp.terraform",
     "jkillian.custom-local-formatters"
   ]
