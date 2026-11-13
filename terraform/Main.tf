@@ -41,7 +41,7 @@ module "repo" {
         "Test Extension (ubuntu-22.04)",
         "Test Extension (windows-latest)",
         "Types Smoketest",
-        "Verify and Build Roblox Studio Plugin",
+        "Verify and Build Roblox Studio Plugin"
     ]
 
     release_checks = [
@@ -52,6 +52,6 @@ module "repo" {
         "Build test - macOS",
         "Validate PR title",
         "Validate version",
-        "Verify diff matches main",
+        "Verify diff matches main"
     ]
 }
