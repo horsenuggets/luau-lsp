@@ -42,6 +42,10 @@ std::optional<AliasRequire> parseAliasRequire(const std::string& requiredString)
 /// The name of the built-in alias that resolves against the sourcemap root.
 const std::string kGameAlias = "game";
 
+/// Finds the nearest directory at or above `directory` that contains a `.git` entry (a directory, or a file in
+/// worktrees and submodules), matching how Lune resolves its `project` global.
+std::optional<Uri> findGitRoot(const Uri& directory);
+
 struct SourceNode
 {
     const SourceNode* parent = nullptr; // Can be null! NOT POPULATED BY SOURCEMAP, must be written to manually
@@ -112,11 +116,16 @@ private:
     std::optional<const SourceNode*> getSourceNodeFromVirtualPath(const Luau::ModuleName& name) const;
     std::optional<const SourceNode*> getSourceNodeFromRealPath(const Uri& name) const;
 
+    /// The source node that Lune's `project` global refers to for the given module. This is the node created from the
+    /// project file at the root of the module's Git repository, unless it is a DataModel, whose children don't mirror
+    /// the repository directories that Lune's `project` exposes.
+    std::optional<const SourceNode*> getProjectSourceNode(const Luau::ModuleName& name) const;
+
     static Luau::ModuleName getVirtualPathFromSourceNode(const SourceNode* sourceNode);
 
     void clearSourcemapTypes();
 
-    /// Clears `realPathsToSourceNodes`/`virtualPathsToSourceNodes` and repopulates them by walking
+    /// Clears `realPathsToSourceNodes`/`virtualPathsToSourceNodes`/`directoryToSourceNodes` and repopulates them by walking
     /// `rootSourceNode`. Must be used (rather than calling `writePathsToMap` directly) whenever the
     /// tree may have been pruned, since `writePathsToMap` only overwrites entries for nodes still in
     /// the tree and would otherwise leave stale entries pointing at pruned/freed nodes.
