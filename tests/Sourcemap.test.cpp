@@ -951,6 +951,32 @@ TEST_CASE_FIXTURE(Fixture, "plugin_clear_removes_plugin_managed_nodes_only")
     CHECK_FALSE(platform->rootSourceNode->findChild("ServerStorage"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "plugin_clear_removes_directory_redirects_of_pruned_nodes")
+{
+    loadSourcemap(R"({"name": "game", "className": "DataModel", "children": []})");
+
+    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
+    REQUIRE(platform->rootSourceNode);
+
+    // A plugin-managed package whose project file redirects its directory to a nested init script
+    auto packageDirectory = workspace.rootUri.resolvePath("Package");
+    json pluginData = {
+        {"Name", "game"},
+        {"ClassName", "DataModel"},
+        {"Children", json::array({{
+                         {"Name", "Package"},
+                         {"ClassName", "ModuleScript"},
+                         {"FilePaths", json::array({packageDirectory.resolvePath("default.project.json").fsPath(),
+                                           packageDirectory.resolvePath("src/init.luau").fsPath()})},
+                     }})},
+    };
+    platform->onStudioPluginFullChange(pluginData);
+    REQUIRE(platform->resolveDirectoryRedirect(packageDirectory));
+
+    platform->onStudioPluginClear();
+    CHECK_FALSE(platform->resolveDirectoryRedirect(packageDirectory));
+}
+
 TEST_CASE_FIXTURE(Fixture, "plugin_managed_flag_persists_through_sourcemap_reload")
 {
     client->globalConfig.diagnostics.strictDatamodelTypes = true;
@@ -1929,6 +1955,188 @@ TEST_CASE_FIXTURE(Fixture, "script_context_resolution_respects_file_path_suffixe
     auto sharedModule = (*replicatedStorage)->findChild("SharedModule");
     REQUIRE(sharedModule);
     CHECK_EQ((*sharedModule)->scriptContext, ScriptContext::Shared);
+}
+
+// A development project file at the repository root whose children mirror the repository directories, like the ones
+// Lune's `project` global exposes
+static const char* GIT_ROOT_PROJECT_SOURCEMAP = R"(
+    {
+        "name": "my-package-dev",
+        "className": "Folder",
+        "filePaths": ["dev.project.json"],
+        "children": [
+            {
+                "name": "Scripts",
+                "className": "Folder",
+                "children": [{"name": "Build", "className": "ModuleScript", "filePaths": ["Scripts/Build.luau"]}]
+            },
+            {
+                "name": "Source",
+                "className": "Folder",
+                "children": [
+                    {"name": "Foo", "className": "ModuleScript", "filePaths": ["Source/Foo.luau"]},
+                    {"name": "Marker", "className": "Part"}
+                ]
+            },
+            {"name": "Tests", "className": "Folder"}
+        ]
+    }
+)";
+
+TEST_CASE_FIXTURE(Fixture, "find_git_root_finds_the_nearest_git_directory_or_file")
+{
+    auto root = Uri::file(tempDir.path());
+
+    tempDir.touch_child(".git/HEAD");
+    CHECK(findGitRoot(root) == root);
+    CHECK(findGitRoot(root.resolvePath("Source/Nested")) == root);
+
+    // Worktrees and submodules have a `.git` file instead of a directory
+    tempDir.touch_child("Submodules/Package/.git");
+    CHECK(findGitRoot(root.resolvePath("Submodules/Package/Source")) == root.resolvePath("Submodules/Package"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_is_typed_from_the_sourcemap_node_at_the_git_root")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(GIT_ROOT_PROJECT_SOURCEMAP);
+
+    // The main module isn't in the sourcemap, like a Lune script outside the Rojo tree
+    auto result = check(R"(
+        --!strict
+        local marker = project.Source.Marker
+        local tests = project.Tests
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("marker")) == "Part");
+    CHECK(Luau::toString(requireType("tests")) == "Instance");
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_unknown_child_is_reported_like_script")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(GIT_ROOT_PROJECT_SOURCEMAP);
+
+    auto result = check(R"(
+        --!strict
+        local _ = project.Missing
+    )");
+
+    LUAU_LSP_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "require_through_project_resolves_the_sourcemap_module")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(GIT_ROOT_PROJECT_SOURCEMAP);
+
+    newDocument("Source/Foo.luau", "return { value = 1 }");
+    auto uri = newDocument("Scripts/Build.luau", R"(
+        --!strict
+        local Foo = require(project.Source.Foo)
+        local value = Foo.value
+    )");
+
+    auto moduleName = workspace.fileResolver.getModuleName(uri);
+    auto result = workspace.frontend.check(moduleName);
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType(getModule(moduleName), "value")) == "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_uses_the_outermost_project_file_at_the_git_root")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+
+    // The nested node is indexed under the same directory, since its project file is also at the root, and an ordinary
+    // folder node sits between the two
+    loadSourcemap(R"(
+        {
+            "name": "my-package-dev",
+            "className": "Folder",
+            "filePaths": ["dev.project.json"],
+            "children": [
+                {
+                    "name": "Source",
+                    "className": "Part",
+                    "children": [{"name": "Package", "className": "Part", "filePaths": ["default.project.json"]}]
+                }
+            ]
+        }
+    )");
+
+    auto result = check(R"(
+        --!strict
+        local package = project.Source.Package
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("package")) == "Part");
+}
+
+TEST_CASE_FIXTURE(Fixture, "every_project_file_of_a_node_redirects_its_directory")
+{
+    // Chained project files contribute files from several directories to one node
+    loadSourcemap(R"(
+        {
+            "name": "game",
+            "className": "DataModel",
+            "children": [
+                {
+                    "name": "Package",
+                    "className": "ModuleScript",
+                    "filePaths": ["Inner/src/init.luau", "Outer/default.project.json", "Inner/default.project.json"]
+                }
+            ]
+        }
+    )");
+
+    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
+    auto expected = workspace.rootUri.resolvePath("Inner/src/init.luau");
+    CHECK(platform->resolveDirectoryRedirect(workspace.rootUri.resolvePath("Outer")) == expected);
+    CHECK(platform->resolveDirectoryRedirect(workspace.rootUri.resolvePath("Inner")) == expected);
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_is_not_typed_from_a_data_model_sourcemap")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(R"(
+        {
+            "name": "Game",
+            "className": "DataModel",
+            "filePaths": ["default.project.json"],
+            "children": [{"name": "ReplicatedStorage", "className": "ReplicatedStorage"}]
+        }
+    )");
+
+    // The test definitions don't declare `project`, so it stays an unknown global
+    auto result = check(R"(
+        --!strict
+        local _ = project
+    )");
+
+    LUAU_LSP_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Luau::get<Luau::UnknownSymbol>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_is_not_typed_outside_a_git_repository")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    loadSourcemap(GIT_ROOT_PROJECT_SOURCEMAP);
+
+    auto result = check(R"(
+        --!strict
+        local _ = project
+    )");
+
+    LUAU_LSP_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Luau::get<Luau::UnknownSymbol>(result.errors[0]));
 }
 
 TEST_SUITE_END();

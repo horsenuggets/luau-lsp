@@ -679,6 +679,38 @@ TEST_CASE_FIXTURE(Fixture, "get_property_changed_signal_includes_properties")
     checkStringCompletionExists(result, "Parent");
 }
 
+TEST_CASE_FIXTURE(Fixture, "project_global_autocompletes_children_of_the_git_root_project")
+{
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(R"(
+    {
+        "name": "my-package-dev",
+        "className": "Folder",
+        "filePaths": ["dev.project.json"],
+        "children": [
+            {"name": "Scripts", "className": "Folder"},
+            {"name": "Source", "className": "Folder"},
+            {"name": "Tests", "className": "Folder"}
+        ]
+    })");
+
+    auto [source, marker] = sourceWithMarker(R"(
+        local _ = project.|
+    )");
+
+    auto uri = newDocument("Scripts/RunTests.luau", source);
+
+    lsp::CompletionParams params;
+    params.textDocument = lsp::TextDocumentIdentifier{uri};
+    params.position = marker;
+
+    auto result = workspace.completion(params, nullptr);
+
+    requireItem(result, "Scripts");
+    requireItem(result, "Source");
+    requireItem(result, "Tests");
+}
+
 TEST_CASE_FIXTURE(Fixture, "get_property_changed_signal_does_not_include_children_from_sourcemap")
 {
     loadSourcemap(R"(
