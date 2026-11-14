@@ -951,6 +951,32 @@ TEST_CASE_FIXTURE(Fixture, "plugin_clear_removes_plugin_managed_nodes_only")
     CHECK_FALSE(platform->rootSourceNode->findChild("ServerStorage"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "plugin_clear_removes_directory_redirects_of_pruned_nodes")
+{
+    loadSourcemap(R"({"name": "game", "className": "DataModel", "children": []})");
+
+    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
+    REQUIRE(platform->rootSourceNode);
+
+    // A plugin-managed package whose project file redirects its directory to a nested init script
+    auto packageDirectory = workspace.rootUri.resolvePath("Package");
+    json pluginData = {
+        {"Name", "game"},
+        {"ClassName", "DataModel"},
+        {"Children", json::array({{
+                         {"Name", "Package"},
+                         {"ClassName", "ModuleScript"},
+                         {"FilePaths", json::array({packageDirectory.resolvePath("default.project.json").fsPath(),
+                                           packageDirectory.resolvePath("src/init.luau").fsPath()})},
+                     }})},
+    };
+    platform->onStudioPluginFullChange(pluginData);
+    REQUIRE(platform->resolveDirectoryRedirect(packageDirectory));
+
+    platform->onStudioPluginClear();
+    CHECK_FALSE(platform->resolveDirectoryRedirect(packageDirectory));
+}
+
 TEST_CASE_FIXTURE(Fixture, "plugin_managed_flag_persists_through_sourcemap_reload")
 {
     client->globalConfig.diagnostics.strictDatamodelTypes = true;

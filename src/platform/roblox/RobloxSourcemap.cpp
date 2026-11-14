@@ -542,6 +542,7 @@ void RobloxPlatform::rebuildPathMaps()
 {
     realPathsToSourceNodes.clear();
     virtualPathsToSourceNodes.clear();
+    directoryToSourceNodes.clear();
     if (rootSourceNode)
         writePathsToMap(rootSourceNode, rootSourceNode->className == "DataModel" ? "game" : "ProjectRoot");
 }
