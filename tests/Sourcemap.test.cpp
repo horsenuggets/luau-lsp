@@ -2053,23 +2053,53 @@ TEST_CASE_FIXTURE(Fixture, "project_uses_the_outermost_project_file_at_the_git_r
     client->globalConfig.diagnostics.strictDatamodelTypes = true;
     tempDir.touch_child(".git/HEAD");
 
-    // The nested node is indexed under the same directory, since its project file is also at the root
+    // The nested node is indexed under the same directory, since its project file is also at the root, and an ordinary
+    // folder node sits between the two
     loadSourcemap(R"(
         {
             "name": "my-package-dev",
             "className": "Folder",
             "filePaths": ["dev.project.json"],
-            "children": [{"name": "Package", "className": "Part", "filePaths": ["default.project.json"]}]
+            "children": [
+                {
+                    "name": "Source",
+                    "className": "Part",
+                    "children": [{"name": "Package", "className": "Part", "filePaths": ["default.project.json"]}]
+                }
+            ]
         }
     )");
 
     auto result = check(R"(
         --!strict
-        local package = project.Package
+        local package = project.Source.Package
     )");
 
     LUAU_LSP_REQUIRE_NO_ERRORS(result);
     CHECK(Luau::toString(requireType("package")) == "Part");
+}
+
+TEST_CASE_FIXTURE(Fixture, "every_project_file_of_a_node_redirects_its_directory")
+{
+    // Chained project files contribute files from several directories to one node
+    loadSourcemap(R"(
+        {
+            "name": "game",
+            "className": "DataModel",
+            "children": [
+                {
+                    "name": "Package",
+                    "className": "ModuleScript",
+                    "filePaths": ["Inner/src/init.luau", "Outer/default.project.json", "Inner/default.project.json"]
+                }
+            ]
+        }
+    )");
+
+    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
+    auto expected = workspace.rootUri.resolvePath("Inner/src/init.luau");
+    CHECK(platform->resolveDirectoryRedirect(workspace.rootUri.resolvePath("Outer")) == expected);
+    CHECK(platform->resolveDirectoryRedirect(workspace.rootUri.resolvePath("Inner")) == expected);
 }
 
 TEST_CASE_FIXTURE(Fixture, "project_is_not_typed_from_a_data_model_sourcemap")

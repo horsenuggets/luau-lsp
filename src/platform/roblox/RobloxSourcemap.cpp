@@ -493,13 +493,15 @@ static std::optional<ScriptContext> scriptContextFromFilePathSuffix(const Source
     return std::nullopt;
 }
 
-/// The directory containing the project file that created this node, if it was created from one
-static std::optional<Uri> projectFileDirectory(const Uri& rootUri, const SourceNode* node)
+/// The directories containing the project files that contributed to this node
+static std::vector<Uri> projectFileDirectories(const Uri& rootUri, const SourceNode* node)
 {
+    std::vector<Uri> directories;
     for (const auto& fp : node->filePaths)
         if (endsWith(Uri::file(fp).filename(), ".project.json"))
-            return rootUri.resolvePath(fp).parent();
-    return std::nullopt;
+            if (auto directory = rootUri.resolvePath(fp).parent())
+                directories.push_back(*directory);
+    return directories;
 }
 
 void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base, ScriptContext parentNameContext)
@@ -514,8 +516,8 @@ void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base, 
     }
 
     // Index source nodes by directory for project.json-based resolution
-    if (auto directory = projectFileDirectory(fileResolver->rootUri, node))
-        directoryToSourceNodes.insert_or_assign(*directory, node);
+    for (const auto& directory : projectFileDirectories(fileResolver->rootUri, node))
+        directoryToSourceNodes.insert_or_assign(directory, node);
 
     if (node->className == "LocalScript")
         node->scriptContext = ScriptContext::Client; // client by class invariant, never overridden
@@ -750,11 +752,16 @@ std::optional<const SourceNode*> RobloxPlatform::getProjectSourceNode(const Luau
     if (it == directoryToSourceNodes.end())
         return std::nullopt;
 
-    // A project file can nest another one from the same directory (e.g. a `$path` to `default.project.json`), and the
-    // directory map keeps the deepest node, so climb to the outermost project node for this directory
+    // A project file can nest another one from the same directory (e.g. a `$path` to `default.project.json`), possibly
+    // through ordinary folder nodes, and the directory map keeps the deepest node. Use the outermost ancestor that was
+    // also created from a project file in this directory
     const SourceNode* node = it->second;
-    while (node->parent && projectFileDirectory(fileResolver->rootUri, node->parent) == gitRoot)
-        node = node->parent;
+    for (const SourceNode* ancestor = node->parent; ancestor; ancestor = ancestor->parent)
+    {
+        auto directories = projectFileDirectories(fileResolver->rootUri, ancestor);
+        if (std::find(directories.begin(), directories.end(), *gitRoot) != directories.end())
+            node = ancestor;
+    }
 
     if (node->className == "DataModel")
         return std::nullopt;
