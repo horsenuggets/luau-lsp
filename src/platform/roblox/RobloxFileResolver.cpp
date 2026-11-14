@@ -415,6 +415,12 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(const Luau::Module
                 return Luau::ModuleInfo{virtualPath.value()};
             }
         }
+
+        if (g->name == "project")
+        {
+            if (auto projectNode = getProjectSourceNode(context->name))
+                return Luau::ModuleInfo{projectNode.value()->virtualPath};
+        }
     }
     else if (auto* i = node->as<Luau::AstExprIndexName>())
     {

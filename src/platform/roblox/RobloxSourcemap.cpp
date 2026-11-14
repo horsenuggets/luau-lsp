@@ -493,6 +493,15 @@ static std::optional<ScriptContext> scriptContextFromFilePathSuffix(const Source
     return std::nullopt;
 }
 
+/// The directory containing the project file that created this node, if it was created from one
+static std::optional<Uri> projectFileDirectory(const Uri& rootUri, const SourceNode* node)
+{
+    for (const auto& fp : node->filePaths)
+        if (endsWith(Uri::file(fp).filename(), ".project.json"))
+            return rootUri.resolvePath(fp).parent();
+    return std::nullopt;
+}
+
 void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base, ScriptContext parentNameContext)
 {
     LUAU_TIMETRACE_SCOPE("RobloxPlatform::writePathsToMap", "LSP");
@@ -505,16 +514,8 @@ void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base, 
     }
 
     // Index source nodes by directory for project.json-based resolution
-    for (const auto& fp : node->filePaths)
-    {
-        auto fpUri = Uri::file(fp);
-        if (endsWith(fpUri.filename(), ".project.json"))
-        {
-            auto dirUri = fileResolver->rootUri.resolvePath(fp);
-            if (auto parent = dirUri.parent())
-                directoryToSourceNodes.insert_or_assign(*parent, node);
-        }
-    }
+    if (auto directory = projectFileDirectory(fileResolver->rootUri, node))
+        directoryToSourceNodes.insert_or_assign(*directory, node);
 
     if (node->className == "LocalScript")
         node->scriptContext = ScriptContext::Client; // client by class invariant, never overridden
@@ -664,8 +665,13 @@ void RobloxPlatform::handleSourcemapUpdate(Luau::Frontend& frontend, const Luau:
         }
 
         if (expressiveTypes || forAutocomplete)
+        {
             if (auto node = isVirtualPath(name) ? getSourceNodeFromVirtualPath(name) : getSourceNodeFromRealPath(fileResolver->getUri(name)))
                 scope->bindings[Luau::AstName("script")] = Luau::Binding{getSourcemapType(globals, instanceTypes, node.value())};
+
+            if (auto node = getProjectSourceNode(name))
+                scope->bindings[Luau::AstName("project")] = Luau::Binding{getSourcemapType(globals, instanceTypes, node.value())};
+        }
 
         // Propagate exported types through Wally wrapper modules.
         // Wally generates wrapper files like:
@@ -716,6 +722,44 @@ std::optional<const SourceNode*> RobloxPlatform::getSourceNodeFromRealPath(const
     if (auto it = realPathsToSourceNodes.find(name); it != realPathsToSourceNodes.end())
         return it->second;
     return std::nullopt;
+}
+
+std::optional<Uri> findGitRoot(const Uri& directory)
+{
+    for (std::optional<Uri> current = directory; current; current = current->parent())
+        if (current->resolvePath(".git").exists())
+            return current;
+    return std::nullopt;
+}
+
+std::optional<const SourceNode*> RobloxPlatform::getProjectSourceNode(const Luau::ModuleName& name) const
+{
+    auto path = isVirtualPath(name) ? resolveToRealPath(name) : std::optional<Uri>{fileResolver->getUri(name)};
+    if (!path)
+        return std::nullopt;
+
+    auto directory = path->parent();
+    if (!directory)
+        return std::nullopt;
+
+    auto gitRoot = findGitRoot(*directory);
+    if (!gitRoot)
+        return std::nullopt;
+
+    auto it = directoryToSourceNodes.find(*gitRoot);
+    if (it == directoryToSourceNodes.end())
+        return std::nullopt;
+
+    // A project file can nest another one from the same directory (e.g. a `$path` to `default.project.json`), and the
+    // directory map keeps the deepest node, so climb to the outermost project node for this directory
+    const SourceNode* node = it->second;
+    while (node->parent && projectFileDirectory(fileResolver->rootUri, node->parent) == gitRoot)
+        node = node->parent;
+
+    if (node->className == "DataModel")
+        return std::nullopt;
+
+    return node;
 }
 
 Luau::ModuleName RobloxPlatform::getVirtualPathFromSourceNode(const SourceNode* sourceNode)

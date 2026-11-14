@@ -1957,4 +1957,156 @@ TEST_CASE_FIXTURE(Fixture, "script_context_resolution_respects_file_path_suffixe
     CHECK_EQ((*sharedModule)->scriptContext, ScriptContext::Shared);
 }
 
+// A development project file at the repository root whose children mirror the repository directories, like the ones
+// Lune's `project` global exposes
+static const char* GIT_ROOT_PROJECT_SOURCEMAP = R"(
+    {
+        "name": "my-package-dev",
+        "className": "Folder",
+        "filePaths": ["dev.project.json"],
+        "children": [
+            {
+                "name": "Scripts",
+                "className": "Folder",
+                "children": [{"name": "Build", "className": "ModuleScript", "filePaths": ["Scripts/Build.luau"]}]
+            },
+            {
+                "name": "Source",
+                "className": "Folder",
+                "children": [
+                    {"name": "Foo", "className": "ModuleScript", "filePaths": ["Source/Foo.luau"]},
+                    {"name": "Marker", "className": "Part"}
+                ]
+            },
+            {"name": "Tests", "className": "Folder"}
+        ]
+    }
+)";
+
+TEST_CASE_FIXTURE(Fixture, "find_git_root_finds_the_nearest_git_directory_or_file")
+{
+    auto root = Uri::file(tempDir.path());
+
+    tempDir.touch_child(".git/HEAD");
+    CHECK(findGitRoot(root) == root);
+    CHECK(findGitRoot(root.resolvePath("Source/Nested")) == root);
+
+    // Worktrees and submodules have a `.git` file instead of a directory
+    tempDir.touch_child("Submodules/Package/.git");
+    CHECK(findGitRoot(root.resolvePath("Submodules/Package/Source")) == root.resolvePath("Submodules/Package"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_is_typed_from_the_sourcemap_node_at_the_git_root")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(GIT_ROOT_PROJECT_SOURCEMAP);
+
+    // The main module isn't in the sourcemap, like a Lune script outside the Rojo tree
+    auto result = check(R"(
+        --!strict
+        local marker = project.Source.Marker
+        local tests = project.Tests
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("marker")) == "Part");
+    CHECK(Luau::toString(requireType("tests")) == "Instance");
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_unknown_child_is_reported_like_script")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(GIT_ROOT_PROJECT_SOURCEMAP);
+
+    auto result = check(R"(
+        --!strict
+        local _ = project.Missing
+    )");
+
+    LUAU_LSP_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "require_through_project_resolves_the_sourcemap_module")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(GIT_ROOT_PROJECT_SOURCEMAP);
+
+    newDocument("Source/Foo.luau", "return { value = 1 }");
+    auto uri = newDocument("Scripts/Build.luau", R"(
+        --!strict
+        local Foo = require(project.Source.Foo)
+        local value = Foo.value
+    )");
+
+    auto moduleName = workspace.fileResolver.getModuleName(uri);
+    auto result = workspace.frontend.check(moduleName);
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType(getModule(moduleName), "value")) == "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_uses_the_outermost_project_file_at_the_git_root")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+
+    // The nested node is indexed under the same directory, since its project file is also at the root
+    loadSourcemap(R"(
+        {
+            "name": "my-package-dev",
+            "className": "Folder",
+            "filePaths": ["dev.project.json"],
+            "children": [{"name": "Package", "className": "Part", "filePaths": ["default.project.json"]}]
+        }
+    )");
+
+    auto result = check(R"(
+        --!strict
+        local package = project.Package
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("package")) == "Part");
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_is_not_typed_from_a_data_model_sourcemap")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(R"(
+        {
+            "name": "Game",
+            "className": "DataModel",
+            "filePaths": ["default.project.json"],
+            "children": [{"name": "ReplicatedStorage", "className": "ReplicatedStorage"}]
+        }
+    )");
+
+    // The test definitions don't declare `project`, so it stays an unknown global
+    auto result = check(R"(
+        --!strict
+        local _ = project
+    )");
+
+    LUAU_LSP_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Luau::get<Luau::UnknownSymbol>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_is_not_typed_outside_a_git_repository")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    loadSourcemap(GIT_ROOT_PROJECT_SOURCEMAP);
+
+    auto result = check(R"(
+        --!strict
+        local _ = project
+    )");
+
+    LUAU_LSP_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(Luau::get<Luau::UnknownSymbol>(result.errors[0]));
+}
+
 TEST_SUITE_END();
