@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## `1.70.1-horse.1.11`
+
+### Added
+
+- Lune's `project` global is now typed from the sourcemap the same way `script` is, so `project.Source` and `project.Tests` autocomplete and `require(project.Source.Module)` resolves. `project` refers to the sourcemap node created from the project file at the root of the file's Git repository (such as a `dev.project.json` whose children mirror the repository folders). Sourcemaps rooted at a `DataModel` are skipped, since their children don't mirror the repository folders that Lune's `project` exposes
+
+### Fixed
+
+- Fixed the sourcemap's directory index keeping stale entries after Studio plugin updates rebuilt the path maps
+
 ## `1.70.1-horse.1.10`
 
 ### Added
