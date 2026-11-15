@@ -391,10 +391,16 @@ TEST_CASE_FIXTURE(Fixture, "lune_roblox_datatypes_have_supported_signatures")
         local x: number = vector.X
         local dim: UDim = UDim.new(0.5, 10) + UDim.new()
         local dims: UDim2 = UDim2.new(dim, dim):Lerp(UDim2.fromScale(1, 1), 0.5)
+        local function optionalDims(x: UDim?, y: UDim?): UDim2
+            return UDim2.new(x, y)
+        end
         local emptyDims: UDim2 = UDim2.new()
         local nilDims: UDim2 = UDim2.new(nil, nil)
         local xDim: UDim2 = UDim2.new(dim)
         local yDim: UDim2 = UDim2.new(nil, dim)
+        local xOffset: UDim2 = UDim2.new(nil, 10)
+        local yScale: UDim2 = UDim2.new(nil, nil, 0.5)
+        local yOffset: UDim2 = UDim2.new(nil, nil, nil, 10)
         local offset: number = dims.X.Offset
         local id: UniqueId = UniqueId.fromString(tostring(UniqueId.new()))
         local null: UniqueId = UniqueId.null
@@ -418,6 +424,9 @@ TEST_CASE_FIXTURE(Fixture, "lune_roblox_rect_optional_bounds_and_arithmetic")
     loadDefinition("@lune", LUNE_GLOBAL_TYPES);
     auto result = check(R"(
         --!strict
+        local function optionalBounds(min: Vector2?, max: Vector2?): Rect
+            return Rect.new(min, max)
+        end
         local empty: Rect = Rect.new()
         local minimum: Rect = Rect.new(Vector2.one)
         local maximum: Rect = Rect.new(nil, Vector2.one)
@@ -427,6 +436,9 @@ TEST_CASE_FIXTURE(Fixture, "lune_roblox_rect_optional_bounds_and_arithmetic")
         local added: Rect = minimum + maximum
         local subtracted: Rect = maximum - minimum
         local width: number = (added + negated - subtracted).Width
+        local y0: Rect = Rect.new(nil, 1)
+        local x1: Rect = Rect.new(nil, nil, 1)
+        local y1: Rect = Rect.new(nil, nil, nil, 1)
     )");
     LUAU_LSP_REQUIRE_NO_ERRORS(result);
 }
@@ -495,10 +507,16 @@ TEST_CASE_FIXTURE(Fixture, "lune_roblox_instances_enums_and_helpers_have_typed_r
     LUAU_LSP_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "lune_roblox_globals_reject_invalid_arguments_and_unsupported_members")
+TEST_CASE("lune_roblox_globals_reject_invalid_arguments_and_unsupported_members")
 {
-    switchToStandardPlatform();
-    loadDefinition("@lune", LUNE_GLOBAL_TYPES);
+    TempDir t("lune_roblox_invalid_arguments");
+    CliClient client;
+    client.globalConfig = Luau::LanguageServer::defaultTestClientConfiguration();
+    client.globalConfig.platform.type = LSPPlatformConfig::Lune;
+    REQUIRE(addBuiltinDefinitions(client));
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    size_t index = 0;
     for (const auto& source : {
              "Axes.new(1)",
              "BrickColor.new(false)",
@@ -553,15 +571,22 @@ TEST_CASE_FIXTURE(Fixture, "lune_roblox_globals_reject_invalid_arguments_and_uns
          })
     {
         CAPTURE(source);
-        auto result = check(std::string("--!strict\n") + source);
+        auto path = t.write_child(std::to_string(index++) + ".luau", std::string("--!strict\n") + source);
+        auto result = workspace.checkSimple(path, nullptr);
         LUAU_LSP_REQUIRE_ERRORS(result);
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "lune_roblox_helper_results_preserve_types_and_optionality")
+TEST_CASE("lune_roblox_helper_results_preserve_types_and_optionality")
 {
-    switchToStandardPlatform();
-    loadDefinition("@lune", LUNE_GLOBAL_TYPES);
+    TempDir t("lune_roblox_invalid_results");
+    CliClient client;
+    client.globalConfig = Luau::LanguageServer::defaultTestClientConfiguration();
+    client.globalConfig.platform.type = LSPPlatformConfig::Lune;
+    REQUIRE(addBuiltinDefinitions(client));
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    size_t index = 0;
     for (const auto& source : {
              "local value: string = deserializeModel('contents')",
              "local value: string = deserializePlace('contents')",
@@ -581,7 +606,8 @@ TEST_CASE_FIXTURE(Fixture, "lune_roblox_helper_results_preserve_types_and_option
          })
     {
         CAPTURE(source);
-        auto result = check(std::string("--!strict\n") + source);
+        auto path = t.write_child(std::to_string(index++) + ".luau", std::string("--!strict\n") + source);
+        auto result = workspace.checkSimple(path, nullptr);
         LUAU_LSP_REQUIRE_ERRORS(result);
     }
 }

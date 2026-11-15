@@ -384,17 +384,21 @@ declare PhysicalProperties: {
 }
 declare Ray: { new: (origin: Vector3, direction: Vector3) -> Ray }
 declare Rect: {
-	new: ((min: Vector2, max: Vector2?) -> Rect)
-		& ((min: nil, max: Vector2) -> Rect)
-		& ((x0: number?, y0: number?, x1: number?, y1: number?) -> Rect),
+	new: ((min: Vector2?, max: Vector2?) -> Rect)
+		& ((x0: number, y0: number?, x1: number?, y1: number?) -> Rect)
+		& ((x0: nil, y0: number, x1: number?, y1: number?) -> Rect)
+		& ((x0: nil, y0: nil, x1: number, y1: number?) -> Rect)
+		& ((x0: nil, y0: nil, x1: nil, y1: number) -> Rect),
 }
 declare Region3: { new: (min: Vector3, max: Vector3) -> Region3 }
 declare Region3int16: { new: (min: Vector3int16, max: Vector3int16) -> Region3int16 }
 declare UDim: { new: (scale: number?, offset: number?) -> UDim }
 declare UDim2: {
-	new: ((x: UDim, y: UDim?) -> UDim2)
-		& ((x: nil, y: UDim) -> UDim2)
-		& ((xScale: number?, xOffset: number?, yScale: number?, yOffset: number?) -> UDim2),
+	new: ((x: UDim?, y: UDim?) -> UDim2)
+		& ((xScale: number, xOffset: number?, yScale: number?, yOffset: number?) -> UDim2)
+		& ((xScale: nil, xOffset: number, yScale: number?, yOffset: number?) -> UDim2)
+		& ((xScale: nil, xOffset: nil, yScale: number, yOffset: number?) -> UDim2)
+		& ((xScale: nil, xOffset: nil, yScale: nil, yOffset: number) -> UDim2),
 	fromOffset: (x: number?, y: number?) -> UDim2,
 	fromScale: (x: number?, y: number?) -> UDim2,
 }
