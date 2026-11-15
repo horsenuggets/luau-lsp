@@ -966,6 +966,50 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_standalone_navigation_without
     target("local value = script.Parent.Le|af", "Child/Leaf.luau", "Child/init.luau");
 }
 
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "instance_require_navigation_preserves_local_roots")
+{
+    roblox();
+    target("local Root = script\nlocal value = require(Root.Ch|ild)", "Child/init.luau");
+    target("local Root = script.Parent\nlocal value = require(Root.Main.Ch|ild)", "Child/init.luau");
+    CHECK(definition("local value = require(script.Mis|sing.Child)").empty());
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_navigation_allows_source_children_on_folders")
+{
+    tempDir.touch_child(".git");
+    loadSourcemap(R"({"name":"Package","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Source","className":"Folder","children":[
+            {"name":"Foo","className":"ModuleScript","filePaths":["Source/Foo.luau"]}
+        ]}
+    ]})");
+    target("local value = project.Source.Fo|o", "Source/Foo.luau");
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_allows_source_files_and_directories")
+{
+    lune();
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source.luau", "return {}\n");
+    target("local value = project.Sou|rce", "Source.luau");
+    tempDir.write_child("Source/Foo.luau", "return {}\n");
+    target("local value = project.Source.Fo|o", "Source/Foo.luau");
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_tracks_nested_physical_project_mappings")
+{
+    lune();
+    tempDir.touch_child(".git");
+    tempDir.write_child("default.project.json", R"({"tree":{
+        "Alias":{"$path":"Source/Nested","Leaf":{"$path":"Elsewhere/Actual.lua"}}
+    }})");
+    tempDir.write_child("Source/Nested/init.luau", "return {}\n");
+    tempDir.write_child("Elsewhere/Actual.lua", "return {}\n");
+    target("local value = project.Al|ias", "Source/Nested/init.luau");
+    target("local value = project.Alias.Le|af", "Elsewhere/Actual.lua");
+    target("local value = script.Parent.Alias.Le|af", "Elsewhere/Actual.lua");
+}
+
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_project_navigation_uses_nearest_git_file_or_directory")
 {
     lune();
@@ -1023,7 +1067,6 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_rejects_nonreferen
              "local value = project.Lo|op",
              "local value = project.Brok|en",
              "local value = project.Malfor|med",
-             "local value = project.Sou|rce",
              "local value = project[\"Na|me\"]",
              "local value = project.GetFull|Name",
              "local value = project[unknown].Ch|ild",

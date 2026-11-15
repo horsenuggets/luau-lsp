@@ -221,39 +221,30 @@ std::optional<Uri> navigationProjectChild(const Uri& base, const std::string& na
         auto tree = readNavigationProject(*directory);
         if (!tree)
             return std::nullopt;
-        auto relative = base.lexicallyRelative(*directory);
-        auto node = &*tree;
-        for (const auto& component : std::filesystem::path(relative))
+        std::function<std::optional<Uri>(const json&, const Uri&)> findChild = [&](const json& node, const Uri& physicalPath) -> std::optional<Uri>
         {
-            auto part = component.generic_string();
-            if (part == "." || part.empty())
-                continue;
-            if (node->contains(part) && (*node)[part].is_object())
-                node = &(*node)[part];
-            else
+            if (physicalPath == base)
             {
-                json* mapped = nullptr;
-                for (auto& child : *node)
+                if (node.contains(name) && node[name].is_object())
                 {
-                    if (child.is_object() && child.contains("$path") && child["$path"].is_string() &&
-                        directory->resolvePath(child["$path"].get<std::string>()) == base.resolvePath(part))
-                    {
-                        mapped = &child;
-                        break;
-                    }
+                    const auto& child = node[name];
+                    if (child.contains("$path") && child["$path"].is_string())
+                        return directory->resolvePath(child["$path"].get<std::string>());
                 }
-                if (!mapped)
-                    return std::nullopt;
-                node = mapped;
+                return std::nullopt;
             }
-        }
-        if (node->contains(name) && (*node)[name].is_object())
-        {
-            const auto& child = (*node)[name];
-            if (child.contains("$path") && child["$path"].is_string())
-                return directory->resolvePath(child["$path"].get<std::string>());
-        }
-        return std::nullopt;
+            for (const auto& [childName, child] : node.items())
+            {
+                if (childName.empty() || childName[0] == '$' || !child.is_object())
+                    continue;
+                auto childPath = child.contains("$path") && child["$path"].is_string() ? directory->resolvePath(child["$path"].get<std::string>())
+                                                                                       : physicalPath.resolvePath(childName);
+                if (auto result = findChild(child, childPath))
+                    return result;
+            }
+            return std::nullopt;
+        };
+        return findChild(*tree, *directory);
     }
     return std::nullopt;
 }
@@ -334,7 +325,7 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveNavigationModule(
             return Luau::ModuleInfo{fileResolver->getModuleName(*parent)};
         return std::nullopt;
     }
-    if (name == "Name" || name == "Source" || name == "GetFullName")
+    if (name == "Name" || name == "GetFullName")
         return std::nullopt;
     auto base = (path->exists() && !path->isDirectory()) || fileResolver->getTextDocument(*path) ? path->parent() : path;
     if (!base)

@@ -74,6 +74,23 @@ static std::vector<LocationInformation> findLocationsForExpr(const Luau::ModuleP
     return {};
 }
 
+static bool isLocalRootedRequireArgument(Luau::AstExpr* expression)
+{
+    while (true)
+    {
+        if (auto group = expression->as<Luau::AstExprGroup>())
+            expression = group->expr;
+        else if (auto index = expression->as<Luau::AstExprIndexName>())
+            expression = index->expr;
+        else if (auto index = expression->as<Luau::AstExprIndexExpr>())
+            expression = index->expr;
+        else if (auto call = expression->as<Luau::AstExprCall>(); call && call->self)
+            expression = call->func;
+        else
+            return expression->is<Luau::AstExprLocal>();
+    }
+}
+
 static Luau::AstExpr* navigationExpressionAtPosition(const Luau::SourceModule& sourceModule, Luau::Position position)
 {
     auto ancestry = Luau::findAstAncestryOfPosition(sourceModule, position);
@@ -239,7 +256,8 @@ lsp::DefinitionResult WorkspaceFolder::gotoDefinition(const lsp::DefinitionParam
         if (ancestry.size() >= 2)
         {
             if (auto call = ancestry[ancestry.size() - 2]->as<Luau::AstExprCall>();
-                call && types::matchRequire(*call) && call->args.data[0]->is<Luau::AstExprConstantString>())
+                call && types::matchRequire(*call) &&
+                (call->args.data[0]->is<Luau::AstExprConstantString>() || isLocalRootedRequireArgument(call->args.data[0])))
             {
                 if (auto moduleInfo = frontend.moduleResolver.resolveModuleInfo(moduleName, *call))
                 {

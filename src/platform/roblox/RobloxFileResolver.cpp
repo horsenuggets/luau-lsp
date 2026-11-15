@@ -243,12 +243,14 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveNavigationModule(
 
     // Real API properties take precedence over children in Roblox. Consult the declared
     // class rather than the per-source-node type, which also contains generated children.
-    if (name == "Source" || name == "Name" || name == "ClassName")
+    if (name == "Name" || name == "ClassName")
         return std::nullopt;
     if (workspaceFolder)
     {
         if (auto node = getSourceNodeFromVirtualPath(context.name))
         {
+            if (name == "Source" && (*node)->isScript())
+                return std::nullopt;
             auto scope = workspaceFolder->frontend.globals.globalScope;
             auto classType = scope->lookupType((*node)->className);
             if (!classType)
