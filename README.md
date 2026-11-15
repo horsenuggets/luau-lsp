@@ -10,7 +10,8 @@ preserved.
 
 Search for **Luau Language Server (Fork)** in the VS Code Extensions view. Install
 this fork and disable other Luau language server extensions in the same workspace to
-avoid duplicate diagnostics and competing language features.
+avoid duplicate diagnostics and competing language features. The Marketplace package
+name is `luau-lsp-fork`; native commands and `luau-lsp` settings are unchanged.
 
 For another editor, see [Getting Started for Language Server Clients](editors/README.md).
 Platform-specific `.vsix` installers are also available with each GitHub release.

@@ -13,6 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added `luau-lsp.documentLinks.enabled`, enabled by default, to disable require-link
   underlines independently of Go to Definition and modifier-click navigation.
 
+## `1.70.1-horse.1.13`
+
+### Fixed
+
+- Used a distinct `luau-lsp-fork` extension name to avoid the globally reserved
+  upstream Marketplace name. Native commands and settings remain unchanged.
+
 ## `1.70.1-horse.1.12`
 
 ### Added
