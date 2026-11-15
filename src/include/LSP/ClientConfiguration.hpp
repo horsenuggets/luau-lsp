@@ -207,8 +207,8 @@ struct ClientCompletionConfiguration
     bool enableFragmentAutocomplete = true;
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ClientCompletionConfiguration, enabled, autocompleteEnd, suggestImports, imports, addParentheses,
-    addTabstopAfterParentheses, fillCallArguments, showPropertiesOnMethodCall, showKeywords, showAnonymousAutofilledFunction, anonymousAutofilledFunction,
-    showDeprecatedItems, enableFragmentAutocomplete);
+    addTabstopAfterParentheses, fillCallArguments, showPropertiesOnMethodCall, showKeywords, showAnonymousAutofilledFunction,
+    anonymousAutofilledFunction, showDeprecatedItems, enableFragmentAutocomplete);
 
 struct ClientSignatureHelpConfiguration
 {
@@ -270,6 +270,12 @@ struct ClientFormatConfiguration
 };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ClientFormatConfiguration, convertQuotes);
 
+struct ClientDocumentLinksConfiguration
+{
+    bool enabled = true;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ClientDocumentLinksConfiguration, enabled)
+
 struct ClientPluginFileSystemConfiguration
 {
     /// Whether filesystem access is enabled for plugins
@@ -320,6 +326,7 @@ struct ClientConfiguration
     ClientPlatformConfiguration platform{};
     ClientRobloxSourcemapConfiguration sourcemap{};
     ClientDiagnosticsConfiguration diagnostics{};
+    ClientDocumentLinksConfiguration documentLinks{};
     ClientTypesConfiguration types{};
     ClientInlayHintsConfiguration inlayHints{};
     ClientHoverConfiguration hover{};
@@ -332,5 +339,5 @@ struct ClientConfiguration
     ClientFormatConfiguration format{};
     ClientPluginConfiguration plugins{};
 };
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ClientConfiguration, autocompleteEnd, ignoreGlobs, platform, sourcemap, diagnostics, types,
-    inlayHints, hover, completion, signatureHelp, require, index, fflags, bytecode, format, plugins);
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(ClientConfiguration, autocompleteEnd, ignoreGlobs, platform, sourcemap, diagnostics, documentLinks,
+    types, inlayHints, hover, completion, signatureHelp, require, index, fflags, bytecode, format, plugins);

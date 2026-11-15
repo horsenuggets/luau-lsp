@@ -459,6 +459,12 @@
           "default": true,
           "scope": "resource"
         },
+        "luau-lsp.documentLinks.enabled": {
+          "markdownDescription": "Whether to provide clickable document links in require expressions. Disable this to hide persistent link underlines without disabling Go to Definition or Ctrl/Cmd-click navigation. Reload the language server to refresh links in open editors.",
+          "type": "boolean",
+          "default": true,
+          "scope": "resource"
+        },
         "luau-lsp.hover.enabled": {
           "markdownDescription": "Enable hover",
           "type": "boolean",

@@ -40,6 +40,11 @@ protected:
     WorkspaceFileResolver* fileResolver;
     WorkspaceFolder* workspaceFolder;
 
+    // Context is the original module for globals, and the resolved receiver for child access.
+    virtual std::optional<Luau::ModuleInfo> resolveNavigationModule(
+        const Luau::ModuleInfo& context, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits);
+    virtual std::optional<Uri> navigationSource(const Luau::ModuleInfo& target, const Luau::TypeCheckLimits& limits);
+
 public:
     virtual void mutateRegisteredDefinitions(Luau::GlobalTypes& globals, std::optional<nlohmann::json> metadata) {}
 
@@ -91,6 +96,9 @@ public:
     virtual std::optional<Luau::ModuleInfo> resolveStringRequire(
         const Luau::ModuleInfo* context, const std::string& requiredString, const Luau::TypeCheckLimits& limits);
     virtual std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node, const Luau::TypeCheckLimits& limits);
+
+    // Resolve only explicit instance-reference chains, never local aliases or require-cache entries.
+    std::optional<Uri> resolveExpressionToSource(const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits);
 
     virtual void handleCompletion(
         const TextDocument& textDocument, const Luau::SourceModule& module, Luau::Position position, std::vector<lsp::CompletionItem>& items)

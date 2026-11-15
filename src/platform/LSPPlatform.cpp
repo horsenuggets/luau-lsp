@@ -9,6 +9,7 @@
 
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
+#include <filesystem>
 #include <memory>
 #include <unordered_set>
 
@@ -193,6 +194,195 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveModule(const Luau::ModuleInf
         return resolveStringRequire(context, requiredString, limits);
     }
 
+    return std::nullopt;
+}
+
+namespace
+{
+// ScriptReference resolves child mappings from the nearest project file, independently of
+// the Git root used by the project global.
+std::optional<json> readNavigationProject(const Uri& directory)
+{
+    auto source = Luau::FileUtils::readFile(directory.resolvePath("default.project.json").fsPath());
+    if (!source)
+        return std::nullopt;
+    auto project = json::parse(*source, nullptr, false);
+    if (project.is_discarded() || !project.contains("tree") || !project["tree"].is_object())
+        return std::nullopt;
+    return project["tree"];
+}
+
+std::optional<Uri> navigationProjectChild(const Uri& base, const std::string& name)
+{
+    for (std::optional<Uri> directory = base; directory; directory = directory->parent())
+    {
+        if (!directory->resolvePath("default.project.json").exists())
+            continue;
+        auto tree = readNavigationProject(*directory);
+        if (!tree)
+            return std::nullopt;
+        std::function<std::optional<Uri>(const json&, const Uri&)> findChild = [&](const json& node, const Uri& physicalPath) -> std::optional<Uri>
+        {
+            if (physicalPath == base)
+            {
+                if (node.contains(name) && node[name].is_object())
+                {
+                    const auto& child = node[name];
+                    if (child.contains("$path") && child["$path"].is_string())
+                        return directory->resolvePath(child["$path"].get<std::string>());
+                }
+                return std::nullopt;
+            }
+            for (const auto& [childName, child] : node.items())
+            {
+                if (childName.empty() || childName[0] == '$' || !child.is_object())
+                    continue;
+                auto childPath = child.contains("$path") && child["$path"].is_string() ? directory->resolvePath(child["$path"].get<std::string>())
+                                                                                       : physicalPath.resolvePath(childName);
+                if (auto result = findChild(child, childPath))
+                    return result;
+            }
+            return std::nullopt;
+        };
+        if (auto result = findChild(*tree, *directory))
+            return result;
+        if (tree->contains("$path") && (*tree)["$path"].is_string())
+            return findChild(*tree, directory->resolvePath((*tree)["$path"].get<std::string>()));
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+// Lune rejects ambiguous file/directory entry points instead of choosing .luau first.
+// Project redirects take precedence over init files and are followed only once, matching
+// LuauFilePath::resolve_inner in the runtime.
+std::optional<Uri> luneNavigationSource(const WorkspaceFileResolver& fileResolver, const Uri& path, bool checkProject = true)
+{
+    if ((path.extension() == ".luau" || path.extension() == ".lua") && (fileResolver.getTextDocument(path) || (path.exists() && !path.isDirectory())))
+        return path;
+    if (path.isDirectory() && checkProject)
+    {
+        if (auto tree = readNavigationProject(path); tree && tree->contains("$path") && (*tree)["$path"].is_string())
+            return luneNavigationSource(fileResolver, path.resolvePath((*tree)["$path"].get<std::string>()), false);
+    }
+    std::optional<Uri> found;
+    for (const auto& suffix : {".luau", ".lua", "/init.luau", "/init.lua"})
+    {
+        auto candidate = path;
+        candidate.path += suffix;
+        if (fileResolver.getTextDocument(candidate) || (candidate.exists() && !candidate.isDirectory()))
+        {
+            if (found)
+                return std::nullopt;
+            found = candidate;
+        }
+    }
+    return found;
+}
+} // namespace
+
+std::optional<Luau::ModuleInfo> LSPPlatform::resolveNavigationModule(
+    const Luau::ModuleInfo& context, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
+{
+    if (!fileResolver->client || fileResolver->client->getConfiguration(fileResolver->rootUri).platform.type != LSPPlatformConfig::Lune)
+        return std::nullopt;
+    auto path = resolveToRealPath(context.name);
+    if (!path)
+        return std::nullopt;
+    if (auto global = expression->as<Luau::AstExprGlobal>())
+    {
+        if (global->name == "script")
+            return context;
+        if (global->name == "project")
+        {
+            if (auto directory = path->parent())
+            {
+                std::error_code error;
+                auto canonical = std::filesystem::weakly_canonical(directory->fsPath(), error);
+                if (!error)
+                    if (auto root = findGitRoot(Uri::file(canonical.generic_string())))
+                        return Luau::ModuleInfo{fileResolver->getModuleName(*root)};
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::string name;
+    if (auto index = expression->as<Luau::AstExprIndexName>())
+        name = index->index.value;
+    else if (auto index = expression->as<Luau::AstExprIndexExpr>())
+    {
+        auto string = index->index->as<Luau::AstExprConstantString>();
+        if (!string)
+            return std::nullopt;
+        name.assign(string->value.data, string->value.size);
+    }
+    else
+        // ScriptReference has no child-lookup methods.
+        return std::nullopt;
+
+    if (name == "Parent")
+    {
+        if (!path->exists() && !fileResolver->getTextDocument(*path) && !luneNavigationSource(*fileResolver, *path))
+            return std::nullopt;
+        if (auto parent = path->parent())
+            return Luau::ModuleInfo{fileResolver->getModuleName(*parent)};
+        return std::nullopt;
+    }
+    if (name == "Name" || name == "GetFullName")
+        return std::nullopt;
+    auto base = (path->exists() && !path->isDirectory()) || fileResolver->getTextDocument(*path) ? path->parent() : path;
+    if (!base)
+        return std::nullopt;
+    auto child = navigationProjectChild(*base, name).value_or(base->resolvePath(name));
+    return Luau::ModuleInfo{fileResolver->getModuleName(child)};
+}
+
+std::optional<Uri> LSPPlatform::navigationSource(const Luau::ModuleInfo& target, const Luau::TypeCheckLimits& limits)
+{
+    auto path = resolveToRealPath(target.name);
+    return path ? luneNavigationSource(*fileResolver, *path) : std::nullopt;
+}
+
+std::optional<Uri> LSPPlatform::resolveExpressionToSource(
+    const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
+{
+    // The frontend module resolver only traces require arguments. Walk explicit receivers
+    // here instead, retaining the originating module until a real global root is found.
+    std::function<std::optional<Luau::ModuleInfo>(Luau::AstExpr*)> resolve = [&](Luau::AstExpr* expr) -> std::optional<Luau::ModuleInfo>
+    {
+        if (auto group = expr->as<Luau::AstExprGroup>())
+            return resolve(group->expr);
+        if (auto global = expr->as<Luau::AstExprGlobal>())
+        {
+            if (global->name != "script" && global->name != "project" && global->name != "game")
+                return std::nullopt;
+            return resolveNavigationModule(Luau::ModuleInfo{from}, expr, limits);
+        }
+        Luau::AstExpr* receiver = nullptr;
+        if (auto index = expr->as<Luau::AstExprIndexName>(); index && index->op == '.')
+            receiver = index->expr;
+        else if (auto index = expr->as<Luau::AstExprIndexExpr>(); index && index->index->is<Luau::AstExprConstantString>())
+            receiver = index->expr;
+        else if (auto call = expr->as<Luau::AstExprCall>();
+            call && call->self && call->args.size >= 1 && call->args.size <= 2 && call->args.data[0]->is<Luau::AstExprConstantString>())
+        {
+            auto method = call->func->as<Luau::AstExprIndexName>();
+            if (!method)
+                return std::nullopt;
+            if (method->index != "WaitForChild" && !(call->args.size == 1 && (method->index == "GetService" || method->index == "FindFirstChild" ||
+                                                                                 method->index == "FindFirstAncestor")))
+                return std::nullopt;
+            receiver = method->expr;
+        }
+        if (!receiver)
+            return std::nullopt;
+        if (auto context = resolve(receiver))
+            return resolveNavigationModule(*context, expr, limits);
+        return std::nullopt;
+    };
+    if (auto target = resolve(expression))
+        return navigationSource(*target, limits);
     return std::nullopt;
 }
 
