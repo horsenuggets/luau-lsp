@@ -25,10 +25,12 @@ std::optional<std::string> SourceNode::getScriptFilePath() const
     {
         const auto uri = Uri::file(path);
         if (uri.extension() == ".lua" || uri.extension() == ".luau")
-        {
             return path;
-        }
-        else if (uri.extension() == ".json" && isScript() && !endsWith(uri.filename(), ".meta.json"))
+    }
+    for (const auto& path : filePaths)
+    {
+        const auto uri = Uri::file(path);
+        if (uri.extension() == ".json" && isScript() && !endsWith(uri.filename(), ".meta.json"))
         {
             return path;
         }

@@ -12,6 +12,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/TimeTrace.h"
 #include "LuauFileUtils.hpp"
+#include "LuneTypes.hpp"
 
 LUAU_FASTFLAG(LuauSolverV2)
 
@@ -537,8 +538,9 @@ Luau::LoadDefinitionFileResult WorkspaceFolder::loadDefinitionFile(
     return result;
 }
 
-void WorkspaceFolder::registerTypes(const std::vector<std::string>& disabledGlobals)
+void WorkspaceFolder::registerTypes(const ClientConfiguration& config)
 {
+    const auto& disabledGlobals = config.types.disabledGlobals;
     LUAU_TIMETRACE_SCOPE("WorkspaceFolder::initialize", "LSP");
     client->sendTrace("workspace initialization: registering Luau globals");
     Luau::registerBuiltinGlobals(frontend, frontend.globals);
@@ -585,6 +587,14 @@ void WorkspaceFolder::registerTypes(const std::vector<std::string>& disabledGlob
         auto result = loadDefinitionFile(packageName, contents, metadata);
         if (!result.success)
             client->sendWindowMessage(lsp::MessageType::Error, "Failed to load built-in definitions " + packageName);
+    }
+
+    if (config.platform.type == LSPPlatformConfig::Lune)
+    {
+        client->sendLogMessage(lsp::MessageType::Info, "Loading built-in definitions: @lune/script");
+        auto result = loadDefinitionFile("@lune/script", LUNE_SCRIPT_TYPES);
+        if (!result.success)
+            client->sendWindowMessage(lsp::MessageType::Error, "Failed to load built-in definitions @lune/script");
     }
 
     // For backwards compatibility, we need to keep an ordering where a definitions file for '@roblox' is always processed first
@@ -702,7 +712,7 @@ void WorkspaceFolder::setupWithConfiguration(const ClientConfiguration& configur
         fileResolver.platform = platform.get();
         fileResolver.requireSuggester = fileResolver.platform->getRequireSuggester();
 
-        registerTypes(configuration.types.disabledGlobals);
+        registerTypes(configuration);
     }
 
     client->sendTrace("workspace: apply platform-specific configuration");
