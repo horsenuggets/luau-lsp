@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added
+
+- Typed all 40 `@lune/roblox` exports as Lune globals, including datatype constructors,
+  supported instance methods, enums, serialization helpers, reflection records, runtime
+  extension callbacks, and Studio paths. These do not expose the full Roblox engine API.
+
+### Fixed
+
+- Matched Lune datatype signatures to the supported runtime, including optional vector
+  angle arguments, CFrame matrix construction and variadic transforms, Rect arithmetic,
+  optional Rect and UDim2 constructor bounds, and removal of unsupported constructor
+  members and legacy aliases.
+
 ## `1.70.1-horse.1.13`
 
 ### Fixed
