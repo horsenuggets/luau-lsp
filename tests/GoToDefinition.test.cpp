@@ -899,8 +899,17 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_instance_navigation_doe
 
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_navigation_preserves_runtime_player_remappings")
 {
+    REQUIRE(loadDefinition("@navigation-players", R"(
+        declare extern type Players extends Instance with
+            LocalPlayer: Instance
+        end
+    )")
+            .success);
     loadSourcemap(R"({"name":"Game","className":"DataModel","children":[
         {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Players","className":"Players","children":[
+            {"name":"LocalPlayer","className":"ModuleScript","filePaths":["LocalPlayer.luau"]}
+        ]},
         {"name":"StarterPlayer","className":"StarterPlayer","children":[
             {"name":"StarterPlayerScripts","className":"StarterPlayerScripts","children":[
                 {"name":"Child","className":"ModuleScript","filePaths":["Child.luau"]},
@@ -912,6 +921,29 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_navigation_preserves_ru
     target("local value = game:GetService(\"Players\").LocalPlayer.PlayerScripts.Child.Parent.Ch|ild", "Child.luau");
     for (const auto& location : definition("local value = game:GetService(\"Players\").LocalPlayer.PlayerScripts.GetChil|dren"))
         CHECK_NE(location.uri, workspace.rootUri.resolvePath("GetChildren.luau"));
+    for (const auto& location : definition("local value = game:GetService(\"Players\").LocalPl|ayer"))
+        CHECK_NE(location.uri, workspace.rootUri.resolvePath("LocalPlayer.luau"));
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_navigation_preserves_service_api_property_identity")
+{
+    REQUIRE(loadDefinition("@navigation-workspace", R"(
+        declare extern type Workspace extends Instance with
+            Gravity: number
+        end
+    )")
+            .success);
+    loadSourcemap(R"({"name":"Game","className":"DataModel","children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Workspace","className":"Workspace","children":[
+            {"name":"Gravity","className":"ModuleScript","filePaths":["Gravity.luau"]}
+        ]}
+    ]})");
+    for (const auto& location : definition("local value = game:GetService(\"Workspace\").Gra|vity"))
+        CHECK_NE(location.uri, workspace.rootUri.resolvePath("Gravity.luau"));
+    target("local value = game:GetService(\"Workspace\"):WaitForChild(\"Gra|vity\")", "Gravity.luau");
+    auto result = check("local gravity: number = game:GetService(\"Workspace\").Gravity");
+    CHECK_MESSAGE(result.errors.empty(), getErrors(result));
 }
 
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_instance_navigation_preserves_local_and_property_definitions")

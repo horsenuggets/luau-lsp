@@ -253,6 +253,10 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveNavigationModule(
         return std::nullopt;
     }
 
+    // LocalPlayer is a runtime receiver for the supported StarterPlayer remappings.
+    if (context.name == "game/Players" && name == "LocalPlayer")
+        return resolveModule(&context, expression, limits);
+
     // Real API properties take precedence over children in Roblox. Consult the declared
     // class rather than the per-source-node type, which also contains generated children.
     if (name == "Name" || name == "ClassName")
@@ -287,6 +291,8 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveNavigationModule(
 
 std::optional<Uri> RobloxPlatform::navigationSource(const Luau::ModuleInfo& target, const Luau::TypeCheckLimits& limits)
 {
+    if (target.name == "game/Players/LocalPlayer")
+        return std::nullopt;
     if (auto source = resolveToRealPath(target.name))
         return source;
 
