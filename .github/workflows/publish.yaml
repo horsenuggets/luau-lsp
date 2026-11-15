@@ -117,9 +117,15 @@ jobs:
 
       - name: Setup Node
         uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Install extension dependencies
         run: npm ci
+        working-directory: editors/code
+
+      - name: Prepare extension release metadata
+        run: npm run prepare-release
         working-directory: editors/code
 
       - name: Package extension
@@ -127,7 +133,7 @@ jobs:
         working-directory: editors/code
         run: |
           for target in ${{ matrix.code-targets }}; do
-            npx @vscode/vsce package --target "$target" -o "../../dist/luau-lsp-$target.vsix"
+            npx --no-install vsce package --target "$target" -o "../../dist/luau-lsp-$target.vsix"
           done
 
       - name: Verify server is bundled
@@ -193,3 +199,40 @@ jobs:
             --title "${{ needs.init.outputs.tag }}" \
             --notes-file artifacts/changelog/changelog.txt \
             release-assets/*
+
+  publish-marketplace:
+    name: publish-marketplace
+    needs: [release-github]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install extension dependencies
+        run: npm ci
+        working-directory: editors/code
+
+      - name: Download platform packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: luau-lsp-*
+          path: artifacts
+
+      - name: Publish platform packages with trusted publishing
+        working-directory: editors/code
+        run: |
+          npx --no-install vsce publish --oidc --skip-duplicate --packagePath \
+            ../../artifacts/luau-lsp-macos/luau-lsp-darwin-arm64.vsix \
+            ../../artifacts/luau-lsp-macos/luau-lsp-darwin-x64.vsix \
+            ../../artifacts/luau-lsp-linux-arm64/luau-lsp-linux-arm64.vsix \
+            ../../artifacts/luau-lsp-linux-x86_64/luau-lsp-linux-x64.vsix \
+            ../../artifacts/luau-lsp-win64/luau-lsp-win32-x64.vsix

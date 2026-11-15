@@ -1,5 +1,7 @@
 .vscode/**
 .vscode-test/**
+.vscode-test.js
+.vscode-test.test.mjs
 out/**
 node_modules/**
 !node_modules/d3/dist/d3.min.js
@@ -10,6 +12,8 @@ src/**
 .gitignore
 .yarnrc
 esbuild.mjs
+prepare-release.mjs
+prepare-release.test.mjs
 vsc-extension-quickstart.md
 **/tsconfig.json
 **/.eslintrc.json

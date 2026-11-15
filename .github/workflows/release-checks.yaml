@@ -157,11 +157,21 @@ jobs:
 
       - name: Setup Node
         uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
       - name: Install dependencies
         run: npm ci
         working-directory: editors/code
 
+      - name: Check extension release versions
+        run: npm run check:release
+        working-directory: editors/code
+
+      - name: Prepare extension release metadata
+        run: npm run prepare-release
+        working-directory: editors/code
+
       - name: Package extension
-        run: npx @vscode/vsce package
+        run: npx --no-install vsce package
         working-directory: editors/code

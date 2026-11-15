@@ -6,7 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added
+
+- Added automatic VS Code Marketplace publishing for all five platform-specific
+  extensions using GitHub Actions trusted publishing without a personal access token.
+
+### Changed
+
+- Distinguished the fork in the extension listing and included its documentation and
+  repository links in release packages.
+- Versioned Marketplace packages from the independent fork counter so automatic
+  extension updates continue across native releases and upstream syncs.
+
 ### Fixed
+
+- Fixed the walkthrough and extension tests selecting the upstream extension instead
+  of the installed fork.
 
 - Fixed require links and Go To Definition for sourcemapped Wally wrappers whose
   package directory is a Folder with a filesystem entry point omitted by the sourcemap.
