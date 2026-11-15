@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fixed the walkthrough and extension tests selecting the upstream extension instead
   of the installed fork.
-
+- Enabled the fork's issue tracker so the Marketplace bug-report link accepts reports.
 - Fixed require links and Go To Definition for sourcemapped Wally wrappers whose
   package directory is a Folder with a filesystem entry point omitted by the sourcemap.
 

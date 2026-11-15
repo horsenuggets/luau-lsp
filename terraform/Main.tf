@@ -89,7 +89,7 @@ import {
 resource "github_repository" "repo" {
     name = local.repo_name
 
-    has_issues = false
+    has_issues = true
     has_projects = false
     has_wiki = true
 
