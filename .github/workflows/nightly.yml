@@ -38,7 +38,11 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+
+      - name: Prepare extension metadata and documents
+        run: node prepare-release.mjs
+        working-directory: editors/code
 
       - name: Set Nightly Version
         shell: bash
@@ -119,22 +123,12 @@ jobs:
             zip ../dist/server.zip *
           fi
 
-      - name: Copy README, CHANGELOG, LICENSE
-        shell: bash
-        run: |
-          rm -f editors/code/README.md
-          cp README.md editors/code/README.md
-          rm -f editors/code/CHANGELOG.md
-          cp CHANGELOG.md editors/code/CHANGELOG.md
-          rm -f editors/code/LICENSE.md
-          cp LICENSE.md editors/code/LICENSE
-
       - run: npm ci
         working-directory: editors/code
 
       - name: Package Extension
         working-directory: editors/code
-        run: npx vsce package -o "../../dist/${{ matrix.artifact-name }}.vsix"
+        run: npx --no-install vsce package -o "../../dist/${{ matrix.artifact-name }}.vsix"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

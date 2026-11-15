@@ -11,11 +11,26 @@ export let editor: vscode.TextEditor;
 export let documentEol: string;
 export let platformEol: string;
 
+export function getTestExtension(
+  getExtension: (id: string) => vscode.Extension<unknown> | undefined = vscode
+    .extensions.getExtension,
+): vscode.Extension<unknown> {
+  const { publisher, name } = require(
+    path.resolve(__dirname, "../../package.json"),
+  );
+  const extensionId = `${publisher}.${name}`;
+  const extension = getExtension(extensionId);
+  if (!extension) {
+    throw new Error(`The extension "${extensionId}" should be installed.`);
+  }
+  return extension;
+}
+
 /**
- * Activates the vscode.lsp-sample extension
+ * Activates the extension declared by this package.
  */
 export async function activate(docUri: vscode.Uri) {
-  const ext = vscode.extensions.getExtension("johnnymorganz.luau-lsp")!;
+  const ext = getTestExtension();
   await ext.activate();
   try {
     doc = await vscode.workspace.openTextDocument(docUri);
