@@ -577,7 +577,7 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     vscode.commands.registerCommand("luau-lsp.openWalkthrough", () => {
       return vscode.commands.executeCommand(
         "workbench.action.openWalkthrough",
-        "JohnnyMorganz.luau-lsp#getting-started",
+        `${context.extension.id}#getting-started`,
         false,
       );
     }),
