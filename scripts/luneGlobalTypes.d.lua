@@ -477,17 +477,6 @@ declare function studioPluginPath(): string
 
 -- Other Lune-specific globals.
 
-type ScriptReference = {
-	Name: string,
-	Parent: any,
-	GetFullName: (self: any) -> string,
-	[string]: any,
-}
-
-declare script: ScriptReference
-
-declare project: ScriptReference
-
 declare executable: string?
 
 declare function warn<T...>(...: T...)

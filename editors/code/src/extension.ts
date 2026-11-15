@@ -621,7 +621,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("luau-lsp.server")) {
+      if (
+        e.affectsConfiguration("luau-lsp.server") ||
+        e.affectsConfiguration("luau-lsp.documentLinks.enabled")
+      ) {
         vscode.window
           .showInformationMessage(
             "Luau LSP server configuration has changed, reload server for this to take effect.",

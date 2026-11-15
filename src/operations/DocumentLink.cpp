@@ -1,6 +1,7 @@
-#include "LSP/Workspace.hpp"
+#include "LSP/Client.hpp"
 #include "LSP/LanguageServer.hpp"
 #include "LSP/LuauExt.hpp"
+#include "LSP/Workspace.hpp"
 
 struct RequireInfo
 {
@@ -32,6 +33,9 @@ struct FindRequireVisitor : public Luau::AstVisitor
 
 std::vector<lsp::DocumentLink> WorkspaceFolder::documentLink(const lsp::DocumentLinkParams& params)
 {
+    if (!client->getConfiguration(rootUri).documentLinks.enabled)
+        return {};
+
     auto moduleName = fileResolver.getModuleName(params.textDocument.uri);
     auto textDocument = fileResolver.getTextDocument(params.textDocument.uri);
     std::vector<lsp::DocumentLink> result{};
