@@ -12,7 +12,7 @@
 #include "Luau/NotNull.h"
 #include "Luau/TimeTrace.h"
 #include "LuauFileUtils.hpp"
-#include "LuneTypes.hpp"
+#include "LuneScriptTypes.hpp"
 
 LUAU_FASTFLAG(LuauSolverV2)
 
@@ -552,15 +552,15 @@ void WorkspaceFolder::registerTypes(const ClientConfiguration& config)
 
     // Register LSPPlugin environment for plugin type checking
     client->sendTrace("workspace initialization: registering LSPPlugin environment");
-    frontend.registerBuiltinDefinition(
-        "LSPPlugin",
+    frontend.registerBuiltinDefinition("LSPPlugin",
         [this](Luau::Frontend& frontend, Luau::GlobalTypes& globals, Luau::ScopePtr scope)
         {
             auto result = frontend.loadDefinitionFile(
                 globals, scope, Luau::LanguageServer::Plugin::LSPPLUGIN_DEFINITIONS, "@LSPPlugin", /* captureComments */ true);
             if (result.success)
             {
-                TextDocument textDocument(Uri::parse("internal://environments/LSPPlugin"), "luau", 0, Luau::LanguageServer::Plugin::LSPPLUGIN_DEFINITIONS);
+                TextDocument textDocument(
+                    Uri::parse("internal://environments/LSPPlugin"), "luau", 0, Luau::LanguageServer::Plugin::LSPPLUGIN_DEFINITIONS);
                 definitionsFileState.emplace(
                     "@LSPPlugin", DefinitionsFileState{std::move(textDocument), std::move(result.sourceModule), std::move(result.module)});
             }
@@ -728,8 +728,8 @@ void WorkspaceFolder::setupWithConfiguration(const ClientConfiguration& configur
         fileResolver.pluginManager = std::make_unique<Luau::LanguageServer::Plugin::PluginManager>(client, Luau::NotNull<WorkspaceFolder>{this});
 
         size_t loadedCount = fileResolver.pluginManager->configure(configuration.plugins.paths, configuration.plugins.timeoutMs);
-        client->sendLogMessage(lsp::MessageType::Info, "Loaded " + std::to_string(loadedCount) + " of " +
-            std::to_string(configuration.plugins.paths.size()) + " plugins");
+        client->sendLogMessage(lsp::MessageType::Info,
+            "Loaded " + std::to_string(loadedCount) + " of " + std::to_string(configuration.plugins.paths.size()) + " plugins");
 
         // Clear plugin document cache when plugins change
         fileResolver.clearPluginDocuments();
