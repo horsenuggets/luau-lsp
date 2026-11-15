@@ -256,21 +256,21 @@ std::optional<Uri> navigationProjectChild(const Uri& base, const std::string& na
 // Lune rejects ambiguous file/directory entry points instead of choosing .luau first.
 // Project redirects take precedence over init files and are followed only once, matching
 // LuauFilePath::resolve_inner in the runtime.
-std::optional<Uri> luneNavigationSource(const Uri& path, bool checkProject = true)
+std::optional<Uri> luneNavigationSource(const WorkspaceFileResolver& fileResolver, const Uri& path, bool checkProject = true)
 {
-    if ((path.extension() == ".luau" || path.extension() == ".lua") && path.exists() && !path.isDirectory())
+    if ((path.extension() == ".luau" || path.extension() == ".lua") && (fileResolver.getTextDocument(path) || (path.exists() && !path.isDirectory())))
         return path;
     if (path.isDirectory() && checkProject)
     {
         if (auto tree = readNavigationProject(path); tree && tree->contains("$path") && (*tree)["$path"].is_string())
-            return luneNavigationSource(path.resolvePath((*tree)["$path"].get<std::string>()), false);
+            return luneNavigationSource(fileResolver, path.resolvePath((*tree)["$path"].get<std::string>()), false);
     }
     std::optional<Uri> found;
     for (const auto& suffix : {".luau", ".lua", "/init.luau", "/init.lua"})
     {
         auto candidate = path;
         candidate.path += suffix;
-        if (candidate.exists() && !candidate.isDirectory())
+        if (fileResolver.getTextDocument(candidate) || (candidate.exists() && !candidate.isDirectory()))
         {
             if (found)
                 return std::nullopt;
@@ -323,7 +323,7 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveNavigationModule(
 
     if (name == "Parent")
     {
-        if (!path->exists() && !fileResolver->getTextDocument(*path) && !luneNavigationSource(*path))
+        if (!path->exists() && !fileResolver->getTextDocument(*path) && !luneNavigationSource(*fileResolver, *path))
             return std::nullopt;
         if (auto parent = path->parent())
             return Luau::ModuleInfo{fileResolver->getModuleName(*parent)};
@@ -341,9 +341,7 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveNavigationModule(
 std::optional<Uri> LSPPlatform::navigationSource(const Luau::ModuleInfo& target, const Luau::TypeCheckLimits& limits)
 {
     auto path = resolveToRealPath(target.name);
-    if (path && (path->extension() == ".luau" || path->extension() == ".lua") && fileResolver->getTextDocument(*path))
-        return path;
-    return path ? luneNavigationSource(*path) : std::nullopt;
+    return path ? luneNavigationSource(*fileResolver, *path) : std::nullopt;
 }
 
 std::optional<Uri> LSPPlatform::resolveExpressionToSource(

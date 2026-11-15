@@ -1045,6 +1045,21 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_tracks_root_physic
     target("local value = project.Le|af", "Elsewhere/Actual.lua", "Source/init.luau");
 }
 
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_resolves_unsaved_managed_source_candidates")
+{
+    lune();
+    tempDir.touch_child(".git");
+    newDocument("Unsaved.luau", "return {}\n");
+    newDocument("Sibling.lua", "return {}\n");
+    newDocument("Package/init.luau", "return {}\n");
+    target("local value = script.Uns|aved", "Unsaved.luau");
+    target("local value = project.Uns|aved", "Unsaved.luau");
+    target("local value = project.Unsaved.Parent.Sib|ling", "Sibling.lua");
+    target("local value = project.Pack|age", "Package/init.luau");
+    newDocument("Unsaved.lua", "return false\n");
+    CHECK(definition("local value = project.Uns|aved").empty());
+}
+
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_project_navigation_uses_nearest_git_file_or_directory")
 {
     lune();
