@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## Unreleased
+
+### Fixed
+
+- Fixed require links and Go To Definition for sourcemapped Wally wrappers whose
+  package directory is a Folder with a filesystem entry point omitted by the sourcemap.
+
 ## `1.70.1-horse.1.11`
 
 ### Added
