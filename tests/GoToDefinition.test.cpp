@@ -903,12 +903,15 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_navigation_preserves_ru
         {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
         {"name":"StarterPlayer","className":"StarterPlayer","children":[
             {"name":"StarterPlayerScripts","className":"StarterPlayerScripts","children":[
-                {"name":"Child","className":"ModuleScript","filePaths":["Child.luau"]}
+                {"name":"Child","className":"ModuleScript","filePaths":["Child.luau"]},
+                {"name":"GetChildren","className":"ModuleScript","filePaths":["GetChildren.luau"]}
             ]}
         ]}
     ]})");
     target("local value = game:GetService(\"Players\").LocalPlayer.PlayerScripts.Ch|ild", "Child.luau");
     target("local value = game:GetService(\"Players\").LocalPlayer.PlayerScripts.Child.Parent.Ch|ild", "Child.luau");
+    for (const auto& location : definition("local value = game:GetService(\"Players\").LocalPlayer.PlayerScripts.GetChil|dren"))
+        CHECK_NE(location.uri, workspace.rootUri.resolvePath("GetChildren.luau"));
 }
 
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_instance_navigation_preserves_local_and_property_definitions")
@@ -1062,6 +1065,7 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_project_child_mapp
     tempDir.write_child("Source/Actual.lua", "return {}\n");
     tempDir.write_child("Package/default.project.json", R"({"tree":{"$path":"Source"}})");
     tempDir.write_child("Package/Source/init.luau", "return {}\n");
+    tempDir.write_child("Package/Source/Child.lua", "return {}\n");
     tempDir.write_child("Package/init.luau", "return false\n");
     tempDir.write_child("Direct/default.project.json", R"({"tree":{"$path":"Entry.lua"}})");
     tempDir.write_child("Direct/Entry.lua", "return {}\n");
@@ -1070,6 +1074,10 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_project_child_mapp
     target("local value = project.Pack|age", "Package/Source/init.luau");
     target("local value = project.Dir|ect", "Direct/Entry.lua");
     target("local value = script.Parent.Pack|age", "Package/Source/init.luau");
+    // Full-name redirects do not change ScriptReference child traversal at runtime.
+    CHECK(definition("local value = project.Package.Ch|ild").empty());
+    target("local value = project.Package.Source.Ch|ild", "Package/Source/Child.lua");
+    CHECK(definition("local value = project.Alias.Ch|ild").empty());
 }
 
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_rejects_nonreferences_and_ambiguous_or_missing_sources")

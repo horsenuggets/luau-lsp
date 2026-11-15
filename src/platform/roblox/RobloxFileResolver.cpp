@@ -259,7 +259,7 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveNavigationModule(
         return std::nullopt;
     if (workspaceFolder)
     {
-        if (auto node = getSourceNodeFromVirtualPath(context.name))
+        if (auto node = getSourceNodeFromVirtualPath(mapContext(context.name)))
         {
             if (name == "Source" && (*node)->isScript())
                 return std::nullopt;
