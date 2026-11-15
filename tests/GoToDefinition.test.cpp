@@ -861,6 +861,9 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_instance_navigation_doe
     roblox();
     for (const auto& source : {
              "local value = script.Mis|sing",
+             "local value = script.Missing.Par|ent",
+             "local value = script.Missing.Parent.Ch|ild",
+             "local value = script.Missing:FindFirstAncestor(\"Ma|in\")",
              "local value = script.Emp|ty",
              "local value = script[\"Missing\"].Ch|ild",
              "local value = script[unknown].Ch|ild",
@@ -892,6 +895,20 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_instance_navigation_doe
             CHECK_NE(location.uri, workspace.rootUri.resolvePath("Child/init.luau"));
         }
     }
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_navigation_preserves_runtime_player_remappings")
+{
+    loadSourcemap(R"({"name":"Game","className":"DataModel","children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"StarterPlayer","className":"StarterPlayer","children":[
+            {"name":"StarterPlayerScripts","className":"StarterPlayerScripts","children":[
+                {"name":"Child","className":"ModuleScript","filePaths":["Child.luau"]}
+            ]}
+        ]}
+    ]})");
+    target("local value = game:GetService(\"Players\").LocalPlayer.PlayerScripts.Ch|ild", "Child.luau");
+    target("local value = game:GetService(\"Players\").LocalPlayer.PlayerScripts.Child.Parent.Ch|ild", "Child.luau");
 }
 
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "standalone_instance_navigation_preserves_local_and_property_definitions")
@@ -948,6 +965,8 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_standalone_navigation_without
     tempDir.write_child("Child/Leaf.luau", "return {}\n");
     tempDir.write_child("Legacy/init.lua", "return {}\n");
     tempDir.write_child("RequirePath.luau", "return {}\n");
+    tempDir.write_child("init/init.luau", "return {}\n");
+    target("local value = project.in|it", "init/init.luau");
     target("local value = script.Require|Path", "RequirePath.luau");
     target("local value = scr|ipt", "main.luau");
     for (const auto& source : {
@@ -1010,6 +1029,19 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_tracks_nested_phys
     target("local value = script.Parent.Alias.Le|af", "Elsewhere/Actual.lua");
 }
 
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_tracks_root_physical_project_mapping")
+{
+    lune();
+    tempDir.touch_child(".git");
+    tempDir.write_child("default.project.json", R"({"tree":{
+        "$path":"Source","Leaf":{"$path":"Elsewhere/Actual.lua"}
+    }})");
+    tempDir.write_child("Source/init.luau", "return {}\n");
+    tempDir.write_child("Elsewhere/Actual.lua", "return {}\n");
+    target("local value = script.Parent.Le|af", "Elsewhere/Actual.lua", "Source/init.luau");
+    target("local value = project.Le|af", "Elsewhere/Actual.lua", "Source/init.luau");
+}
+
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_project_navigation_uses_nearest_git_file_or_directory")
 {
     lune();
@@ -1060,6 +1092,8 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_rejects_nonreferen
     tempDir.write_child("Malformed/default.project.json", "not json");
     for (const auto& source : {
              "local value = project.Mis|sing",
+             "local value = script.Missing.Par|ent",
+             "local value = script.Missing.Parent.Ch|ild",
              "local value = project.Emp|ty",
              "local value = project.Bo|th",
              "local value = project.Mix|ed",

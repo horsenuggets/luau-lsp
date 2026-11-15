@@ -214,11 +214,21 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
     return Luau::ModuleInfo{base};
 }
 
+static std::string mapContext(const std::string& context);
+
 std::optional<Luau::ModuleInfo> RobloxPlatform::resolveNavigationModule(
     const Luau::ModuleInfo& context, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
 {
-    if (expression->is<Luau::AstExprGlobal>() || expression->is<Luau::AstExprCall>())
+    if (expression->is<Luau::AstExprGlobal>())
         return resolveModule(&context, expression, limits);
+    auto receiverExists = getSourceNodeFromVirtualPath(context.name) || getSourceNodeFromVirtualPath(mapContext(context.name));
+    if (auto call = expression->as<Luau::AstExprCall>())
+    {
+        auto method = call->func->as<Luau::AstExprIndexName>();
+        if (method && method->index == "FindFirstAncestor" && !receiverExists)
+            return std::nullopt;
+        return resolveModule(&context, expression, limits);
+    }
 
     std::string name;
     if (auto index = expression->as<Luau::AstExprIndexName>())
@@ -236,6 +246,8 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveNavigationModule(
     // Bracket access has the same Parent semantics as dot access for navigation.
     if (name == "Parent")
     {
+        if (!receiverExists)
+            return std::nullopt;
         if (auto parent = getParentPath(context.name))
             return Luau::ModuleInfo{*parent};
         return std::nullopt;

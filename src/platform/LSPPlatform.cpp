@@ -244,7 +244,11 @@ std::optional<Uri> navigationProjectChild(const Uri& base, const std::string& na
             }
             return std::nullopt;
         };
-        return findChild(*tree, *directory);
+        if (auto result = findChild(*tree, *directory))
+            return result;
+        if (tree->contains("$path") && (*tree)["$path"].is_string())
+            return findChild(*tree, directory->resolvePath((*tree)["$path"].get<std::string>()));
+        return std::nullopt;
     }
     return std::nullopt;
 }
@@ -256,8 +260,6 @@ std::optional<Uri> luneNavigationSource(const Uri& path, bool checkProject = tru
 {
     if ((path.extension() == ".luau" || path.extension() == ".lua") && path.exists() && !path.isDirectory())
         return path;
-    if (path.filename() == "init")
-        return std::nullopt;
     if (path.isDirectory() && checkProject)
     {
         if (auto tree = readNavigationProject(path); tree && tree->contains("$path") && (*tree)["$path"].is_string())
@@ -321,6 +323,8 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveNavigationModule(
 
     if (name == "Parent")
     {
+        if (!path->exists() && !fileResolver->getTextDocument(*path) && !luneNavigationSource(*path))
+            return std::nullopt;
         if (auto parent = path->parent())
             return Luau::ModuleInfo{fileResolver->getModuleName(*parent)};
         return std::nullopt;
