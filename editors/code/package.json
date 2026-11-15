@@ -1,12 +1,12 @@
 {
-  "name": "luau-lsp",
+  "name": "luau-lsp-fork",
   "displayName": "Luau Language Server (Fork)",
   "description": "An extended Luau language server with fork-specific language and tooling support.",
   "author": "JohnnyMorganz",
   "publisher": "horsenuggets",
   "license": "MIT",
   "icon": "assets/icon.png",
-  "version": "2.1.12",
+  "version": "2.1.13",
   "engines": {
     "vscode": "^1.82.0"
   },

@@ -19,6 +19,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   optional Rect and UDim2 constructor bounds, and removal of unsupported constructor
   members and legacy aliases.
 
+## `1.70.1-horse.1.13`
+
+### Fixed
+
+- Used a distinct `luau-lsp-fork` extension name to avoid the globally reserved
+  upstream Marketplace name. Native commands and settings remain unchanged.
+
 ## `1.70.1-horse.1.12`
 
 ### Added
