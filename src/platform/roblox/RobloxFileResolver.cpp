@@ -199,6 +199,17 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
         }
     }
 
+    // Project files can hide filesystem entry points behind sourcemapped Folders.
+    // Keep mapped scripts authoritative, and only fall back to files that exist.
+    if (!resolveToRealPath(base))
+    {
+        if (auto resolved = LSPPlatform::resolveStringRequire(context, requiredString, limits))
+        {
+            if (auto path = resolveToRealPath(resolved->name); path && path->exists() && !path->isDirectory())
+                return resolved;
+        }
+    }
+
     return Luau::ModuleInfo{base};
 }
 

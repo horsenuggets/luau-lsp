@@ -721,6 +721,77 @@ TEST_CASE_FIXTURE(Fixture, "string_require_falls_through_without_sourcemap_entry
     CHECK_EQ(Uri::file(resolved->name), Uri::file(tempDir.path()).resolvePath("project/mymodule/init.lua"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "sourcemap_string_require_resolves_unmapped_package_entry_point")
+{
+    auto extension = std::string(".luau");
+    bool hasEntryPoint = true;
+    SUBCASE("Luau entry point") {}
+    SUBCASE("Legacy Lua entry point")
+    {
+        extension = ".lua";
+    }
+    SUBCASE("Folder without an entry point")
+    {
+        hasEntryPoint = false;
+    }
+
+    auto wrapperPath = tempDir.touch_child("Packages/Example.luau");
+    auto packagePath = std::string("Packages/_Index/author_example@1.0.0/example");
+    auto initPath = tempDir.path() + "/" + packagePath + "/init" + extension;
+    if (hasEntryPoint)
+        tempDir.write_child(packagePath + "/init" + extension, "return {}\n");
+    auto projectPath = tempDir.write_child(packagePath + "/default.project.json", R"({"tree":{"$className":"Folder"}})");
+    auto sourcemap = std::string(R"({
+        "name": "Game", "className": "DataModel", "children": [{
+            "name": "Packages", "className": "Folder", "children": [{
+                "name": "Example", "className": "ModuleScript", "filePaths": ["{wrapperPath}"]
+            }, {
+                "name": "_Index", "className": "Folder", "children": [{
+                    "name": "author_example@1.0.0", "className": "Folder", "children": [{
+                        "name": "example", "className": "Folder", "filePaths": ["{projectPath}"]
+                    }]
+                }]
+            }]
+        }]
+    })");
+    replace(sourcemap, "{wrapperPath}", wrapperPath);
+    replace(sourcemap, "{projectPath}", projectPath);
+    loadSourcemap(sourcemap);
+
+    auto [source, position] = sourceWithMarker(R"(return require("./_Index/author_example@1.0.0/ex|ample"))");
+    auto document = newDocument("Packages/Example.luau", source);
+    Luau::ModuleInfo context{workspace.fileResolver.getModuleName(document)};
+    REQUIRE_EQ(context.name, "game/Packages/Example");
+    auto resolved = workspace.platform->resolveStringRequire(&context, "./_Index/author_example@1.0.0/example", workspace.limits);
+    REQUIRE(resolved.has_value());
+    auto realPath = workspace.platform->resolveToRealPath(resolved->name);
+    if (hasEntryPoint)
+    {
+        REQUIRE(realPath.has_value());
+        CHECK_EQ(*realPath, Uri::file(initPath));
+    }
+    else
+    {
+        CHECK_EQ(resolved->name, "game/Packages/_Index/author_example@1.0.0/example");
+        CHECK_FALSE(realPath.has_value());
+    }
+
+    lsp::DocumentLinkParams linkParams;
+    linkParams.textDocument = lsp::TextDocumentIdentifier{document};
+    auto links = workspace.documentLink(linkParams);
+    REQUIRE_EQ(links.size(), hasEntryPoint ? 1 : 0);
+    if (hasEntryPoint)
+        CHECK_EQ(links[0].target, Uri::file(initPath));
+
+    lsp::DefinitionParams definitionParams;
+    definitionParams.textDocument = lsp::TextDocumentIdentifier{document};
+    definitionParams.position = position;
+    auto definitions = workspace.gotoDefinition(definitionParams, nullptr);
+    REQUIRE_EQ(definitions.size(), hasEntryPoint ? 1 : 0);
+    if (hasEntryPoint)
+        CHECK_EQ(definitions[0].uri, Uri::file(initPath));
+}
+
 TEST_CASE_FIXTURE(Fixture, "string_require_resolves_wally_package_via_sourcemap")
 {
     // Simulates the Wally package structure: Packages/_Index/author_pkg@1.0.0/pkg/src/init.luau
@@ -858,6 +929,31 @@ TEST_CASE_FIXTURE(Fixture, "sourcemap_string_require_resolves_cross_service")
 
     REQUIRE(result.has_value());
     CHECK_EQ(result->name, "game/ServerScriptService/ServerModule");
+}
+
+TEST_CASE_FIXTURE(Fixture, "sourcemap_string_require_preserves_mapped_script_over_filesystem_entry_point")
+{
+    auto mainPath = tempDir.touch_child("project/main.luau");
+    tempDir.touch_child("project/library/init.luau");
+    auto mappedPath = tempDir.touch_child("project/library/src/init.luau");
+    auto sourcemap = std::string(R"({
+        "name": "Game", "className": "DataModel", "children": [{
+            "name": "Main", "className": "ModuleScript", "filePaths": ["{mainPath}"]
+        }, {
+            "name": "library", "className": "ModuleScript", "filePaths": ["{mappedPath}"]
+        }]
+    })");
+    replace(sourcemap, "{mainPath}", mainPath);
+    replace(sourcemap, "{mappedPath}", mappedPath);
+    loadSourcemap(sourcemap);
+
+    Luau::ModuleInfo context{"game/Main"};
+    auto resolved = workspace.platform->resolveStringRequire(&context, "./library", workspace.limits);
+    REQUIRE(resolved.has_value());
+    CHECK_EQ(resolved->name, "game/library");
+    auto realPath = workspace.platform->resolveToRealPath(resolved->name);
+    REQUIRE(realPath.has_value());
+    CHECK_EQ(*realPath, Uri::file(mappedPath));
 }
 
 TEST_CASE_FIXTURE(Fixture, "sourcemap_string_require_resolves_nonexistent_path")
