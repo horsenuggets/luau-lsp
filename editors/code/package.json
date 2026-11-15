@@ -1,20 +1,12 @@
 {
   "name": "luau-lsp",
-  "displayName": "Luau Language Server",
-  "description": "A Language Server Client for Luau",
+  "displayName": "Luau Language Server (Fork)",
+  "description": "An extended Luau language server with fork-specific language and tooling support.",
   "author": "JohnnyMorganz",
   "publisher": "horsenuggets",
   "license": "MIT",
   "icon": "assets/icon.png",
-  "homepage": "https://github.com/JohnnyMorganz/luau-lsp",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/JohnnyMorganz/luau-lsp"
-  },
-  "bugs": {
-    "url": "https://github.com/JohnnyMorganz/luau-lsp/issues"
-  },
-  "version": "1.70.1",
+  "version": "2.1.12",
   "engines": {
     "vscode": "^1.82.0"
   },
@@ -885,7 +877,9 @@
     "package": "npm run check-types && node esbuild.mjs --production",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "prepare-release": "node prepare-release.mjs",
+    "check:release": "node prepare-release.mjs --check && node --test prepare-release.test.mjs .vscode-test.test.mjs",
+    "pretest": "npm run check:release && npm run compile-tests && npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
     "check:format": "prettier --check src"
@@ -900,11 +894,12 @@
     "@typescript-eslint/parser": "^7.16.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "4.1.1",
+    "esbuild": "^0.28.1",
     "eslint": "^8.57.0",
     "mocha": "^11.1.0",
-    "prettier": "^3.8.2",
-    "esbuild": "^0.28.1",
     "npm-run-all": "^4.1.5",
+    "prettier": "^3.8.2",
     "typescript": "^5.5.3"
   },
   "dependencies": {

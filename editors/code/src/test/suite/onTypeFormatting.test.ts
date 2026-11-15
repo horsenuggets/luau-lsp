@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
+import { getTestExtension } from "../helper";
 import {
   isQuoteConversionEdit,
   shouldHandleQuoteConversion,
@@ -55,16 +56,11 @@ suite("OnTypeFormatting Middleware Test Suite", () => {
     // Opening the first Luau document activates the extension, which can take longer than
     // a test's timeout on slow runners. Activate it once up front so each test only
     // measures its own work. These tests mock the server's response, and the test
-    // environment has no server binary, so activation is allowed to fail here. The
-    // extension is found by name because the publisher differs between the fork and
-    // upstream.
+    // environment has no server binary, so activation is allowed to fail here.
     suiteSetup(async function () {
       this.timeout(60000);
 
-      const extension = vscode.extensions.all.find(
-        (ext) => ext.packageJSON.name === "luau-lsp",
-      );
-      assert.ok(extension, "The luau-lsp extension should be installed");
+      const extension = getTestExtension();
       await extension.activate().then(
         () => undefined,
         () => undefined,

@@ -1,20 +1,33 @@
-# Luau Language Server
+# luau-lsp
 
-An implementation of a language server for the [Luau](https://github.com/Roblox/luau) programming language.
+Language Server Implementation for Luau.
+
+This fork extends the [Luau](https://github.com/Roblox/luau) language server with
+additional language and tooling support. Upstream authorship and the MIT license are
+preserved.
 
 ## Getting Started
 
-Install the extension from the VSCode Marketplace or OpenVSX Registry:
+Search for **Luau Language Server (Fork)** in the VS Code Extensions view. Install
+this fork and disable other Luau language server extensions in the same workspace to
+avoid duplicate diagnostics and competing language features.
 
-- VSCode Marketplace: <https://marketplace.visualstudio.com/items?itemName=JohnnyMorganz.luau-lsp>
-- OpenVSX Registry: <https://open-vsx.org/extension/JohnnyMorganz/luau-lsp>
+For another editor, see [Getting Started for Language Server Clients](editors/README.md).
+Platform-specific `.vsix` installers are also available with each GitHub release.
+Each installer includes the language server, so a separate server installation is not
+required.
 
-Alternatively, check out [Getting Started for Language Server Clients](https://github.com/JohnnyMorganz/luau-lsp/blob/main/editors/README.md)
-to setup your own client for a different editor.
+### Extension Versions
 
-A [Nightly Release](https://github.com/JohnnyMorganz/luau-lsp/actions/workflows/nightly.yml) runs every day with the latest changes on main.
-You can download the relevant release for your platform and manually install the `.vsix`.
-The nightly release builds with debug symbols and profiling instrumentation for debugging.
+Marketplace packages use `2.X.Y`, where `X.Y` comes from the native release's
+`-horse.X.Y` fork counter. The independent fork counter keeps extension updates
+increasing even when the upstream version changes. Native versions and GitHub tags
+retain the complete upstream and fork version.
+
+Release packaging obtains repository and support links from `GITHUB_REPOSITORY`.
+Run `npm run prepare-release` in `editors/code/` with that variable set before
+packaging locally. No personal publishing token is needed by the release workflow;
+it uses a publisher Trusted Publishing policy for its GitHub Actions identity.
 
 ### For General Users
 

@@ -139,7 +139,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
         working-directory: editors/code
       - run: xvfb-run -a npm test
         working-directory: editors/code
@@ -147,7 +147,9 @@ jobs:
       - run: npm test
         working-directory: editors/code
         if: runner.os != 'Linux'
-      - run: npx @vscode/vsce package
+      - run: npm run prepare-release
+        working-directory: editors/code
+      - run: npx --no-install vsce package
         working-directory: editors/code
 
   selene:
