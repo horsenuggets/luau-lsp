@@ -6,7 +6,7 @@
   "publisher": "horsenuggets",
   "license": "MIT",
   "icon": "assets/icon.png",
-  "version": "2.1.13",
+  "version": "2.1.14",
   "engines": {
     "vscode": "^1.82.0"
   },

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+## `1.70.1-horse.1.14`
+
 ### Added
 
 - Typed all 40 `@lune/roblox` exports as Lune globals, including datatype constructors,
@@ -18,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   angle arguments, CFrame matrix construction and variadic transforms, Rect arithmetic,
   optional Rect and UDim2 constructor bounds, and removal of unsupported constructor
   members and legacy aliases.
+- Updated compatible extension dependencies to resolve known runtime dependency
+  advisories and corrected the internal-source request constant's lint naming.
 
 ## `1.70.1-horse.1.13`
 
