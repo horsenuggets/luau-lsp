@@ -212,6 +212,7 @@ public:
     std::optional<Luau::ModuleInfo> resolveNavigationModule(
         const Luau::ModuleInfo& context, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits) override;
     std::optional<Uri> navigationSource(const Luau::ModuleInfo& target, const Luau::TypeCheckLimits& limits) override;
+    std::optional<Uri> navigationDirectory(const Luau::ModuleInfo& target) override;
 
     std::optional<Uri> resolveDirectoryRedirect(const Uri& directory) const override;
 

@@ -815,4 +815,56 @@ TEST_CASE_FIXTURE(Fixture, "includes_documentation_for_index_member_of_setmetata
     CHECK(result->contents.value.find("Documentation for prop_b.") != std::string::npos);
 }
 
+TEST_CASE_FIXTURE(Fixture, "hovering_any_segment_of_a_require_path_describes_the_required_module")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.write_child("Source/Foo.luau", "return {}\n");
+    loadSourcemap(R"({"name":"Game","className":"DataModel","children":[
+        {"name":"ReplicatedStorage","className":"ReplicatedStorage","children":[
+            {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+            {"name":"Source","className":"Part","children":[
+                {"name":"Foo","className":"ModuleScript","filePaths":["Source/Foo.luau"]}
+            ]}
+        ]}
+    ]})");
+
+    // Hovers the first occurrence of the given text in a single-line source.
+    auto hoverAt = [&](const std::string& source, const std::string& text) -> std::string
+    {
+        auto uri = workspace.rootUri.resolvePath("main.luau");
+        if (workspace.fileResolver.getTextDocument(uri))
+            updateDocument(uri, source);
+        else
+            newDocument("main.luau", source);
+        lsp::HoverParams params;
+        params.textDocument = lsp::TextDocumentIdentifier{uri};
+        params.position = lsp::Position{0, source.find(text)};
+        auto result = workspace.hover(params, nullptr);
+        return result ? result->contents.value : "";
+    };
+
+    const std::string required = "local value = require(script.Parent.Source.Foo)";
+    auto leaf = hoverAt(required, "Foo");
+    auto folder = hoverAt("local value = script.Parent.Source", "Source");
+    // The test definitions have no ModuleScript class, so the module falls back to Instance.
+    CHECK_EQ(leaf, codeBlock("luau", "Instance"));
+    CHECK_EQ(folder, codeBlock("luau", "Part"));
+    for (const auto* segment : {"script", "Parent", "Source"})
+    {
+        CAPTURE(segment);
+        CHECK_EQ(hoverAt(required, segment), leaf);
+    }
+
+    // Child lookups are segments of the path too.
+    const std::string lookup = "local value = require(script.Parent:FindFirstChild(\"Source\").Foo)";
+    for (const auto* segment : {"Parent", "FindFirstChild", "\"Source\""})
+    {
+        CAPTURE(segment);
+        CHECK_EQ(hoverAt(lookup, segment), leaf);
+    }
+
+    // A require that doesn't resolve has no module to describe, so segments describe themselves.
+    CHECK_EQ(hoverAt("local value = require(script.Parent.Source.Missing)", "Source"), folder);
+}
+
 TEST_SUITE_END();

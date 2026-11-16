@@ -100,6 +100,52 @@ struct DocumentationLocation
     Luau::Location location;
 };
 
+// Whether the expression is one of the segments of an instance path like
+// script.Parent["Child"]:FindFirstChild("Leaf"), walking from the leaf back to its root.
+static bool isSegmentOfPath(Luau::AstExpr* path, const Luau::AstExpr* expression)
+{
+    while (path)
+    {
+        if (path == expression)
+            return true;
+        if (auto group = path->as<Luau::AstExprGroup>())
+            path = group->expr;
+        else if (auto index = path->as<Luau::AstExprIndexName>())
+            path = index->expr;
+        else if (auto index = path->as<Luau::AstExprIndexExpr>(); index && index->index->is<Luau::AstExprConstantString>())
+        {
+            if (index->index == expression)
+                return true;
+            path = index->expr;
+        }
+        else if (auto call = path->as<Luau::AstExprCall>(); call && call->self && call->args.size >= 1)
+        {
+            if (call->args.data[0] == expression || call->func == expression)
+                return true;
+            auto method = call->func->as<Luau::AstExprIndexName>();
+            path = method ? method->expr : nullptr;
+        }
+        else
+            return false;
+    }
+    return false;
+}
+
+// Returns the argument of the require whose path contains the hovered expression.
+static Luau::AstExpr* findEnclosingRequirePath(const std::vector<Luau::AstNode*>& ancestry, const Luau::AstExpr* expression)
+{
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
+    {
+        // Calls like FindFirstChild can sit between the hovered segment and the require.
+        auto call = (*it)->as<Luau::AstExprCall>();
+        auto argument = call ? types::matchRequire(*call) : std::nullopt;
+        if (!argument)
+            continue;
+        return *argument != expression && isSegmentOfPath(*argument, expression) ? *argument : nullptr;
+    }
+    return nullptr;
+}
+
 std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params, const LSPCancellationToken& cancellationToken)
 {
     auto config = client->getConfiguration(rootUri);
@@ -140,6 +186,20 @@ std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params,
     std::optional<Luau::TypeId> type = std::nullopt;
     std::optional<std::string> documentationSymbol = getDocumentationSymbolAtPosition(*sourceModule, *module, position);
     std::optional<DocumentationLocation> documentationLocation = std::nullopt;
+
+    // A resolvable require links its whole argument to the required module, so every segment
+    // of the path describes that module rather than the intermediate instance it names.
+    auto ancestry = Luau::findAstAncestryOfPosition(*sourceModule, position);
+    if (auto requirePath = exprOrLocal.getExpr() ? findEnclosingRequirePath(ancestry, exprOrLocal.getExpr()) : nullptr)
+    {
+        if (resolveRequireLink(moduleName, requirePath))
+        {
+            // The symbol at the cursor documents the hovered segment, not the module.
+            exprOrLocal.setExpr(requirePath);
+            node = requirePath;
+            documentationSymbol = std::nullopt;
+        }
+    }
 
     if (auto ref = node->as<Luau::AstTypeReference>())
     {
@@ -208,7 +268,6 @@ std::optional<lsp::Hover> WorkspaceFolder::hover(const lsp::HoverParams& params,
         // Special case, we want to check if there is a parent in the ancestry, and if it is an AstTable
         // If so, and we are hovering over a prop, we want to give type info for the assigned expression to the prop
         // rather than just "string"
-        auto ancestry = Luau::findAstAncestryOfPosition(*sourceModule, position);
         if (ancestry.size() >= 2 && ancestry.at(ancestry.size() - 2)->is<Luau::AstExprTable>())
         {
             auto parent = ancestry.at(ancestry.size() - 2)->as<Luau::AstExprTable>();

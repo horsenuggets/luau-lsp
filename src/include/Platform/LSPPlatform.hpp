@@ -25,6 +25,11 @@
 class WorkspaceFolder;
 struct WorkspaceFileResolver;
 
+/// Rewrites a symlink-resolved path inside the workspace to the workspace's own spelling of
+/// it (e.g. "/tmp/..." rather than "/private/tmp/..." on macOS), since editors identify files
+/// by that spelling. Paths outside the workspace are returned unchanged.
+Uri toWorkspacePath(const Uri& workspaceRoot, const Uri& resolvedPath);
+
 /// Context for generating unknown symbol quick fixes
 struct UnknownSymbolFixContext
 {
@@ -44,6 +49,12 @@ protected:
     virtual std::optional<Luau::ModuleInfo> resolveNavigationModule(
         const Luau::ModuleInfo& context, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits);
     virtual std::optional<Uri> navigationSource(const Luau::ModuleInfo& target, const Luau::TypeCheckLimits& limits);
+    // The on-disk folder behind a navigation target that has no source file of its own.
+    virtual std::optional<Uri> navigationDirectory(const Luau::ModuleInfo& target);
+
+private:
+    std::optional<Luau::ModuleInfo> resolveExpressionToModule(
+        const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits);
 
 public:
     virtual void mutateRegisteredDefinitions(Luau::GlobalTypes& globals, std::optional<nlohmann::json> metadata) {}
@@ -99,6 +110,8 @@ public:
 
     // Resolve only explicit instance-reference chains, never local aliases or require-cache entries.
     std::optional<Uri> resolveExpressionToSource(const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits);
+    // Like resolveExpressionToSource, but for folders that have no entry-point file.
+    std::optional<Uri> resolveExpressionToDirectory(const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits);
 
     virtual void handleCompletion(
         const TextDocument& textDocument, const Luau::SourceModule& module, Luau::Position position, std::vector<lsp::CompletionItem>& items)
