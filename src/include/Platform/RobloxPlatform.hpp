@@ -39,7 +39,7 @@ struct AliasRequire
 /// Splits an alias require into its parts. Returns nullopt when the string is not an alias require.
 std::optional<AliasRequire> parseAliasRequire(const std::string& requiredString);
 
-/// The name of the built-in alias that resolves against the sourcemap root.
+/// The name of the built-in alias that resolves against the game node (see `RobloxPlatform::getGameSourceNode`).
 const std::string kGameAlias = "game";
 
 /// Finds the nearest directory at or above `directory` that contains a `.git` entry (a directory, or a file in
@@ -69,6 +69,9 @@ struct SourceNode
     Luau::SourceCode::Type sourceCodeType() const;
     std::optional<SourceNode*> findChild(const std::string& name) const;
     std::optional<const SourceNode*> findDescendant(const std::string& name) const;
+    /// BFS search for the game, which is this node if it is a DataModel, or else its shallowest DataModel descendant
+    /// (e.g. a development project that nests the game next to its scripts and tests)
+    std::optional<SourceNode*> findDataModel();
     // O(n) search for ancestor of name
     std::optional<const SourceNode*> findAncestor(const std::string& name) const;
     bool isAncestorOf(const SourceNode* other) const;
@@ -138,6 +141,10 @@ public:
     Luau::TypedAllocator<PluginNode> pluginNodeAllocator;
 
     mutable std::unordered_map<Luau::ModuleName, const SourceNode*> virtualPathsToSourceNodes{};
+
+    /// The node that `@game` resolves against. This is the DataModel, which may be nested inside a root that isn't
+    /// one, or else the root itself.
+    const SourceNode* getGameSourceNode() const;
 
     Luau::TypeArena instanceTypes;
 

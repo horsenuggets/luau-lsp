@@ -143,8 +143,8 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
         // `@game` is absolute: it is rooted at the DataModel and reads nothing from the requirer.
         // Resolve it before the filesystem fallback, so a file that the sourcemap does not cover
         // still resolves it. A user-defined `game` alias in `.luaurc` still wins.
-        if (alias->name == kGameAlias && !userDefined && rootSourceNode)
-            return joinVirtualPath(rootSourceNode->virtualPath, alias->remainder);
+        if (const SourceNode* gameNode = getGameSourceNode(); alias->name == kGameAlias && !userDefined && gameNode)
+            return joinVirtualPath(gameNode->virtualPath, alias->remainder);
 
         // Every other alias needs an instance context, so a file outside the sourcemap falls back
         // to the filesystem.
