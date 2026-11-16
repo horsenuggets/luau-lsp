@@ -366,16 +366,21 @@ std::optional<Uri> LSPPlatform::navigationDirectory(const Luau::ModuleInfo& targ
     if (!path || !path->isDirectory())
         return std::nullopt;
     // Like Lune's GetFullName, only ordinary directories count. Any entry-point candidate
-    // makes the path a module, even when it's ambiguous or broken.
+    // makes the path a module, even when it's ambiguous or broken. Unsaved managed documents
+    // count too, matching luneNavigationSource.
+    auto isCandidate = [&](const Uri& candidate)
+    {
+        return candidate.exists() || fileResolver->getTextDocument(candidate);
+    };
     auto sibling = *path;
     for (const auto& suffix : {".luau", ".lua"})
     {
         sibling.path = path->path + suffix;
-        if (sibling.exists())
+        if (isCandidate(sibling))
             return std::nullopt;
     }
     for (const auto& entry : {"init.luau", "init.lua", "default.project.json"})
-        if (path->resolvePath(entry).exists())
+        if (isCandidate(path->resolvePath(entry)))
             return std::nullopt;
     return path;
 }

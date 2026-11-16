@@ -1092,6 +1092,25 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_resolves_unsaved_m
     CHECK(definition("local value = project.Uns|aved").empty());
 }
 
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_folder_navigation_treats_unsaved_entry_points_as_modules")
+{
+    lune();
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Ambiguous/Child.luau", "return {}\n");
+    tempDir.write_child("Entry/Child.luau", "return {}\n");
+    tempDir.write_child("Plain/Child.luau", "return {}\n");
+    // Ambiguous modules stay rejected instead of falling back to their folder.
+    newDocument("Ambiguous.luau", "return {}\n");
+    newDocument("Ambiguous.lua", "return {}\n");
+    newDocument("Entry/init.luau", "return {}\n");
+    newDocument("Entry/init.lua", "return {}\n");
+
+    CHECK(definition("local value = project.Ambig|uous").empty());
+    CHECK(definition("local value = project.Ent|ry").empty());
+    target("local value = project.Pla|in", "Plain");
+}
+
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_project_navigation_uses_nearest_git_file_or_directory")
 {
     lune();
