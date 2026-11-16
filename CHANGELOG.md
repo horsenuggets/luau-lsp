@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+## `1.70.1-horse.1.15`
+
 ### Added
 
 - Typed `game` from a `DataModel` node nested in a sourcemap whose root isn't one, such as a
