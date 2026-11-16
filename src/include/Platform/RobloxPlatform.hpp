@@ -49,6 +49,9 @@ std::optional<Uri> findGitRoot(const Uri& directory);
 struct SourceNode
 {
     const SourceNode* parent = nullptr; // Can be null! NOT POPULATED BY SOURCEMAP, must be written to manually
+    // The node this one is nested under in the sourcemap. Matches `parent`, except that a nested DataModel has no
+    // Roblox parent but is still contained in the project. NB: NOT POPULATED BY SOURCEMAP, must be written to manually
+    const SourceNode* containingNode = nullptr;
     std::string name;
     std::string className;
     std::vector<std::string> filePaths{};
@@ -115,6 +118,14 @@ private:
 
     // Maps wrapper module names to the inner module they re-export types from (for Wally wrappers)
     mutable std::unordered_map<Luau::ModuleName, Luau::ModuleName> wallyReexportSources{};
+
+    // The project path a nested DataModel would have had (e.g. `ProjectRoot/Source/DataModel`), or empty when the game
+    // isn't nested. Its subtree is registered under `game` instead
+    std::string nestedDataModelPath;
+
+    /// The virtual path of a named child, mapping player containers to their starter folders and a nested DataModel
+    /// reached through the project to `game`
+    Luau::ModuleName getChildVirtualPath(const Luau::ModuleName& parent, const std::string& child) const;
 
     std::optional<const SourceNode*> getSourceNodeFromVirtualPath(const Luau::ModuleName& name) const;
     std::optional<const SourceNode*> getSourceNodeFromRealPath(const Uri& name) const;

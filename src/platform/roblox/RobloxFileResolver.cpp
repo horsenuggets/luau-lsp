@@ -338,6 +338,17 @@ static std::string mapContext(const std::string& context)
     return context;
 }
 
+Luau::ModuleName RobloxPlatform::getChildVirtualPath(const Luau::ModuleName& parent, const std::string& child) const
+{
+    auto path = mapContext(parent) + '/' + child;
+
+    // Reaching a nested DataModel through the project (e.g. `project.Source.DataModel`) enters the game, whose
+    // subtree is registered under `game`
+    if (!nestedDataModelPath.empty() && path == nestedDataModelPath)
+        return "game";
+    return path;
+}
+
 std::unique_ptr<Luau::RequireSuggester> RobloxPlatform::getRequireSuggester()
 {
     return std::make_unique<RobloxStringRequireSuggester>(workspaceFolder, fileResolver, this);
@@ -539,7 +550,7 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(
                     return Luau::ModuleInfo{parentPath.value(), context->optional};
             }
 
-            return Luau::ModuleInfo{mapContext(context->name) + '/' + i->index.value, context->optional};
+            return Luau::ModuleInfo{getChildVirtualPath(context->name, i->index.value), context->optional};
         }
     }
     else if (auto* i_expr = node->as<Luau::AstExprIndexExpr>())
@@ -547,7 +558,7 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(
         if (auto* index = i_expr->index->as<Luau::AstExprConstantString>())
         {
             if (context)
-                return Luau::ModuleInfo{mapContext(context->name) + '/' + std::string(index->value.data, index->value.size), context->optional};
+                return Luau::ModuleInfo{getChildVirtualPath(context->name, std::string(index->value.data, index->value.size)), context->optional};
         }
     }
     else if (auto* call = node->as<Luau::AstExprCall>(); call && call->self && call->args.size >= 1 && context)
@@ -562,7 +573,7 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(
             }
             else if (func == "WaitForChild" || (func == "FindFirstChild" && call->args.size == 1)) // Don't allow recursive FFC
             {
-                return Luau::ModuleInfo{mapContext(context->name) + '/' + std::string(index->value.data, index->value.size), context->optional};
+                return Luau::ModuleInfo{getChildVirtualPath(context->name, std::string(index->value.data, index->value.size)), context->optional};
             }
             else if (func == "FindFirstAncestor")
             {

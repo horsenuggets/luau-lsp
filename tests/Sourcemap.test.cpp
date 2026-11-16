@@ -2253,6 +2253,59 @@ TEST_CASE_FIXTURE(Fixture, "project_is_still_typed_with_a_nested_data_model")
     CHECK(Luau::toString(requireType("dataModel")) == "DataModel");
 }
 
+TEST_CASE_FIXTURE(Fixture, "require_through_project_enters_a_nested_data_model")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    newDocument("Source/DataModel/ReplicatedStorage/Shared.luau", "return { value = 1 }");
+    auto result = check(R"(
+        --!strict
+        local dotted = require(project.Source.DataModel.ReplicatedStorage.Shared).value
+        local bracketed = require(project.Source["DataModel"].ReplicatedStorage.Shared).value
+        local waited = require(project.Source:WaitForChild("DataModel").ReplicatedStorage.Shared).value
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("dotted")) == "number");
+    CHECK(Luau::toString(requireType("bracketed")) == "number");
+    CHECK(Luau::toString(requireType("waited")) == "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_reaches_past_a_nested_data_model_from_the_same_directory")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+
+    // The DataModel comes from a second project file at the repository root, so the directory index keeps it as the
+    // deepest node there, and `project` must still walk out to the development project around it
+    loadSourcemap(R"(
+        {
+            "name": "my-game-dev",
+            "className": "Folder",
+            "filePaths": ["dev.project.json"],
+            "children": [
+                {
+                    "name": "Game",
+                    "className": "DataModel",
+                    "filePaths": ["default.project.json"],
+                    "children": [{"name": "ReplicatedStorage", "className": "ReplicatedStorage"}]
+                },
+                {"name": "Tests", "className": "Folder"}
+            ]
+        }
+    )");
+
+    auto result = check(R"(
+        --!strict
+        local tests = project.Tests
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("tests")) == "Instance");
+}
+
 TEST_CASE_FIXTURE(Fixture, "plugin_info_hydrates_a_nested_data_model")
 {
     loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);

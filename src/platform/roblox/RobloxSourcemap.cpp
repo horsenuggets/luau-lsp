@@ -556,11 +556,14 @@ void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base, 
 
     for (auto& child : node->children)
     {
+        child->containingNode = node;
+
         // A root that isn't a DataModel can nest the game. Root it at `game` with no parent, as in Roblox, so that
         // instance requires, `GetService`, and `@game` resolve into it
         if (child->className == "DataModel" && rootSourceNode && rootSourceNode->findDataModel() == child)
         {
             child->parent = nullptr;
+            nestedDataModelPath = base + "/" + child->name;
             writePathsToMap(child, "game");
             continue;
         }
@@ -575,6 +578,7 @@ void RobloxPlatform::rebuildPathMaps()
     realPathsToSourceNodes.clear();
     virtualPathsToSourceNodes.clear();
     directoryToSourceNodes.clear();
+    nestedDataModelPath.clear();
     if (rootSourceNode)
         writePathsToMap(rootSourceNode, rootSourceNode->className == "DataModel" ? "game" : "ProjectRoot");
 }
@@ -792,9 +796,10 @@ std::optional<const SourceNode*> RobloxPlatform::getProjectSourceNode(const Luau
 
     // A project file can nest another one from the same directory (e.g. a `$path` to `default.project.json`), possibly
     // through ordinary folder nodes, and the directory map keeps the deepest node. Use the outermost ancestor that was
-    // also created from a project file in this directory
+    // also created from a project file in this directory. Walk containing nodes rather than Roblox parents, so that a
+    // nested DataModel still reaches the project around it
     const SourceNode* node = it->second;
-    for (const SourceNode* ancestor = node->parent; ancestor; ancestor = ancestor->parent)
+    for (const SourceNode* ancestor = node->containingNode; ancestor; ancestor = ancestor->containingNode)
     {
         auto directories = projectFileDirectories(fileResolver->rootUri, ancestor);
         if (std::find(directories.begin(), directories.end(), *gitRoot) != directories.end())
