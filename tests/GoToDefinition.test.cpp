@@ -1232,6 +1232,67 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_locates_sourcema
     target("local value = project.Spe|cs", "Specs");
 }
 
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_omits_virtual_project_containers")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source/Foo.luau", "return {}\n");
+    // A and B only exist in the project file, so taking one directory up per level would map
+    // B to the workspace root and A outside of it.
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"A","className":"Folder","children":[
+            {"name":"B","className":"Folder","children":[
+                {"name":"Source","className":"Folder","children":[
+                    {"name":"Foo","className":"ModuleScript","filePaths":["Source/Foo.luau"]}
+                ]}
+            ]}
+        ]}
+    ]})");
+
+    target("local value = project.A.B.Sour|ce", "Source");
+    CHECK(definition("local value = project.A.|B").empty());
+    CHECK(definition("local value = project.|A").empty());
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_opens_omitted_entry_points_of_inferred_folders")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source/Foo.luau", "return {}\n");
+    tempDir.write_child("Source/init.luau", "return {}\n");
+    // The project keeps Source as a Folder and leaves its init file out of the sourcemap.
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Source","className":"Folder","children":[
+            {"name":"Foo","className":"ModuleScript","filePaths":["Source/Foo.luau"]}
+        ]}
+    ]})");
+
+    target("local value = project.Sour|ce", "Source/init.luau");
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_anchors_folders_on_model_and_meta_files")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Assets/Model.model.json", "{}\n");
+    tempDir.write_child("Services/Storage/init.meta.json", "{}\n");
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Assets","className":"Folder","children":[
+            {"name":"Model","className":"Model","filePaths":["Assets/Model.model.json"]}
+        ]},
+        {"name":"Services","className":"Folder","children":[
+            {"name":"Storage","className":"Folder","filePaths":["Services/Storage/init.meta.json"]}
+        ]}
+    ]})");
+
+    target("local value = project.Ass|ets", "Assets");
+    target("local value = project.Services.Stor|age", "Services/Storage");
+    target("local value = project.Servi|ces", "Services");
+}
+
 // Creating symlinks needs extra privileges on Windows.
 #ifndef _WIN32
 TEST_CASE_FIXTURE(Fixture, "project_parent_walks_real_directories_of_symlinked_workspaces")
