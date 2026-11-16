@@ -90,6 +90,7 @@ struct SourceNode
     /// nodes detached from the tree (which `RobloxPlatform::clearSourcemapTypes` cannot reach)
     void clearCachedTypes() const;
 
+    bool containsDataModel() const;
     bool containsFilePaths() const;
     ordered_json toJson() const;
 

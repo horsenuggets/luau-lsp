@@ -2362,7 +2362,8 @@ TEST_CASE_FIXTURE(Fixture, "sourcemap_json_keeps_a_nested_data_model_without_fil
             "name": "my-game-dev",
             "className": "Folder",
             "children": [
-                {"name": "DataModel", "className": "DataModel"},
+                {"name": "Source", "className": "Folder", "children": [{"name": "DataModel", "className": "DataModel"}]},
+                {"name": "Empty", "className": "Folder"},
                 {"name": "Tests", "className": "Folder", "children": [{"name": "Runner", "className": "ModuleScript", "filePaths": ["Tests/Runner.luau"]}]}
             ]
         }
@@ -2371,13 +2372,13 @@ TEST_CASE_FIXTURE(Fixture, "sourcemap_json_keeps_a_nested_data_model_without_fil
     auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
     auto json = platform->rootSourceNode->toJson();
 
+    // The fileless folder enclosing the game survives, while other fileless folders are still pruned
     REQUIRE(json.contains("children"));
     auto children = json["children"];
-    CHECK(std::any_of(children.begin(), children.end(),
-        [](const auto& child)
-        {
-            return child["className"] == "DataModel";
-        }));
+    REQUIRE_EQ(children.size(), 2);
+    CHECK_EQ(children[0]["name"], "Source");
+    CHECK_EQ(children[0]["children"][0]["className"], "DataModel");
+    CHECK_EQ(children[1]["name"], "Tests");
 }
 
 TEST_CASE_FIXTURE(Fixture, "project_reaches_past_a_nested_data_model_from_the_same_directory")
