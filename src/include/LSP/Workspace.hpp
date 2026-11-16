@@ -154,6 +154,8 @@ public:
     std::vector<lsp::CompletionItem> completion(const lsp::CompletionParams& params, const LSPCancellationToken& cancellationToken);
 
     std::vector<lsp::DocumentLink> documentLink(const lsp::DocumentLinkParams& params);
+    // The file a require argument links to, if it resolves to one on disk.
+    std::optional<Uri> resolveRequireLink(const Luau::ModuleName& moduleName, Luau::AstExpr* argument);
     lsp::DocumentColorResult documentColor(const lsp::DocumentColorParams& params);
     lsp::ColorPresentationResult colorPresentation(const lsp::ColorPresentationParams& params);
     lsp::CodeActionResult codeAction(const lsp::CodeActionParams& params, const LSPCancellationToken& cancellationToken);

@@ -6,7 +6,7 @@
   "publisher": "horsenuggets",
   "license": "MIT",
   "icon": "assets/icon.png",
-  "version": "2.1.14",
+  "version": "2.1.15",
   "engines": {
     "vscode": "^1.82.0"
   },
@@ -460,7 +460,7 @@
           "scope": "resource"
         },
         "luau-lsp.documentLinks.enabled": {
-          "markdownDescription": "Whether to provide clickable document links in require expressions. Disable this to hide persistent link underlines without disabling Go to Definition or Ctrl/Cmd-click navigation. Reload the language server to refresh links in open editors.",
+          "markdownDescription": "Whether to underline navigable references as clickable links, including require paths and instance paths like `project.Source.Module`. Folder segments reveal the folder in the Explorer. Disable this to hide all persistent link underlines. Ctrl/Cmd-click navigation still works through Go to Definition, including revealing folders. Reload the language server to refresh links in open editors.",
           "type": "boolean",
           "default": true,
           "scope": "resource"

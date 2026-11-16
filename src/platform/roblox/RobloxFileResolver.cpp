@@ -143,8 +143,8 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
         // `@game` is absolute: it is rooted at the DataModel and reads nothing from the requirer.
         // Resolve it before the filesystem fallback, so a file that the sourcemap does not cover
         // still resolves it. A user-defined `game` alias in `.luaurc` still wins.
-        if (alias->name == kGameAlias && !userDefined && rootSourceNode)
-            return joinVirtualPath(rootSourceNode->virtualPath, alias->remainder);
+        if (const SourceNode* gameNode = getGameSourceNode(); alias->name == kGameAlias && !userDefined && gameNode)
+            return joinVirtualPath(gameNode->virtualPath, alias->remainder);
 
         // Every other alias needs an instance context, so a file outside the sourcemap falls back
         // to the filesystem.
@@ -152,7 +152,7 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
             return LSPPlatform::resolveStringRequire(context, requiredString, limits);
 
         if (alias->name == "self")
-            return joinVirtualPath(context->name, alias->remainder);
+            return Luau::ModuleInfo{canonicalizeVirtualPath(joinVirtualPath(context->name, alias->remainder).name)};
 
         if (userDefined)
             return LSPPlatform::resolveStringRequire(context, requiredString, limits);
@@ -188,6 +188,10 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
 
         if (segment == "..")
         {
+            // A nested game has no parent, as in Roblox, so a relative path can't climb out into the project
+            if (base == "game" && !nestedDataModelPath.empty())
+                return std::nullopt;
+
             auto parent = getParentPath(base);
             if (!parent)
                 return std::nullopt;
@@ -195,8 +199,8 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
         }
         else
         {
-            base += '/';
-            base += segment;
+            // Entering a nested DataModel from the project continues in the game's subtree
+            base = canonicalizeVirtualPath(base + '/' + segment);
         }
     }
 
@@ -298,19 +302,95 @@ std::optional<Uri> RobloxPlatform::navigationSource(const Luau::ModuleInfo& targ
 
     // Some project sourcemaps retain a Folder and omit its init file. Reuse the existing
     // string-require entry-point and project-redirect resolver for those directories.
+    // Directories inferred from a Folder's children are checked as well, since they aren't
+    // indexed from project files.
+    auto entryPoint = [&](const Uri& directory) -> std::optional<Uri>
+    {
+        Luau::ModuleInfo context{fileResolver->getModuleName(directory.resolvePath("__navigation__.luau"))};
+        if (auto resolved = LSPPlatform::resolveStringRequire(&context, directory.fsPath(), limits))
+            if (auto source = resolveToRealPath(resolved->name); source && source->exists() && !source->isDirectory())
+                return source;
+        return std::nullopt;
+    };
     if (auto node = getSourceNodeFromVirtualPath(target.name))
     {
         for (const auto& [directory, sourceNode] : directoryToSourceNodes)
-        {
-            if (sourceNode != *node)
-                continue;
-            Luau::ModuleInfo context{fileResolver->getModuleName(directory.resolvePath("__navigation__.luau"))};
-            if (auto resolved = LSPPlatform::resolveStringRequire(&context, directory.fsPath(), limits))
-                if (auto source = resolveToRealPath(resolved->name); source && source->exists() && !source->isDirectory())
+            if (sourceNode == *node)
+                if (auto source = entryPoint(directory))
                     return source;
-        }
+        if (auto directory = navigationDirectory(target))
+            return entryPoint(*directory);
     }
     return std::nullopt;
+}
+
+// The folder a node's project file lives in. Project-backed nodes can map their scripts
+// elsewhere (e.g. a package's "src" folder), so this takes precedence over script paths.
+static std::optional<Uri> projectDirectory(const Uri& rootUri, const SourceNode* node)
+{
+    for (const auto& filePath : node->filePaths)
+        if (endsWith(filePath, ".project.json"))
+            return rootUri.resolvePath(filePath).parent();
+    return std::nullopt;
+}
+
+// Whether a file describes the folder it sits in rather than a sibling of it. Other names
+// starting with "init.", such as "init.spec.luau", are ordinary files inside the folder.
+static bool isInitFile(const Uri& path)
+{
+    static const std::unordered_set<std::string> kInitFileNames{
+        "init.lua", "init.luau", "init.server.lua", "init.server.luau", "init.client.lua", "init.client.luau", "init.meta.json"};
+    return kInitFileNames.count(path.filename()) > 0;
+}
+
+static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNode* node);
+
+// Where a node lives on disk, as the file or folder that its parent folder contains. Any of
+// its files can anchor it, including non-script ones like models and meta files.
+static std::optional<Uri> nodePath(const Uri& rootUri, const SourceNode* node)
+{
+    if (auto directory = projectDirectory(rootUri, node))
+        return directory;
+    auto filePath = node->getScriptFilePath();
+    if (!filePath && !node->filePaths.empty())
+        filePath = node->filePaths.front();
+    if (filePath)
+    {
+        auto path = rootUri.resolvePath(*filePath);
+        return isInitFile(path) ? path.parent() : path;
+    }
+    return inferNodeDirectory(rootUri, node);
+}
+
+// Folder nodes often carry no file paths in the sourcemap, so infer the folder from where
+// their children live on disk. Rojo names such folders after their directories, which rules
+// out virtual project containers whose children happen to share a parent directory, and
+// targets outside the workspace are never part of the project.
+static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNode* node)
+{
+    for (const auto* child : node->children)
+        if (auto path = nodePath(rootUri, child))
+            if (auto directory = path->parent(); directory && directory->isDirectory())
+                if (directory->filename() == node->name && rootUri.isAncestorOf(*directory))
+                    return directory;
+    return std::nullopt;
+}
+
+std::optional<Uri> RobloxPlatform::navigationDirectory(const Luau::ModuleInfo& target)
+{
+    auto node = getSourceNodeFromVirtualPath(target.name);
+    if (!node)
+        return LSPPlatform::navigationDirectory(target);
+    // The node's own project file comes first. A directory index can't be used here, since
+    // nested project files in the same folder leave it pointing at the innermost node.
+    if (auto directory = projectDirectory(fileResolver->rootUri, *node); directory && directory->isDirectory())
+        return directory;
+    // Folders with an init.meta.json name their directory directly.
+    for (const auto& filePath : (*node)->filePaths)
+        if (auto path = fileResolver->rootUri.resolvePath(filePath); isInitFile(path))
+            if (auto directory = path.parent(); directory && directory->isDirectory())
+                return directory;
+    return inferNodeDirectory(fileResolver->rootUri, *node);
 }
 
 std::optional<Uri> RobloxPlatform::resolveDirectoryRedirect(const Uri& directory) const
@@ -336,6 +416,29 @@ static std::string mapContext(const std::string& context)
     else if (context == "game/Players/LocalPlayer/StarterGear")
         return "game/StarterPack";
     return context;
+}
+
+bool isInSameVirtualRoot(const Luau::ModuleName& first, const Luau::ModuleName& second)
+{
+    return first.substr(0, first.find('/')) == second.substr(0, second.find('/'));
+}
+
+Luau::ModuleName RobloxPlatform::canonicalizeVirtualPath(const Luau::ModuleName& path) const
+{
+    // Reaching a nested DataModel through the project (e.g. `project.Source.DataModel`) enters the game, whose
+    // subtree is registered under `game`
+    if (nestedDataModelPath.empty() || !Luau::startsWith(path, nestedDataModelPath))
+        return path;
+    if (path.size() == nestedDataModelPath.size())
+        return "game";
+    if (path[nestedDataModelPath.size()] == '/')
+        return "game" + path.substr(nestedDataModelPath.size());
+    return path;
+}
+
+Luau::ModuleName RobloxPlatform::getChildVirtualPath(const Luau::ModuleName& parent, const std::string& child) const
+{
+    return canonicalizeVirtualPath(mapContext(parent) + '/' + child);
 }
 
 std::unique_ptr<Luau::RequireSuggester> RobloxPlatform::getRequireSuggester()
@@ -370,8 +473,7 @@ static std::optional<std::pair<std::string, const char*>> computeSourcemapRequir
     if (!isScriptContextCompatible(fromNode->scriptContext, targetNode->scriptContext))
         return std::nullopt;
 
-    // Compute absolute path: prefer user-defined aliases, then fall back to @game/<virtual path>
-    auto computeAbsolute = [&]() -> std::pair<std::string, const char*>
+    auto computeAliased = [&]() -> std::optional<std::pair<std::string, const char*>>
     {
         if (auto realPath = platform->getRealPathFromSourceNode(targetNode))
         {
@@ -380,14 +482,27 @@ static std::optional<std::pair<std::string, const char*>> computeSourcemapRequir
                 realPath = realPath->parent().value_or(*realPath);
 
             if (auto aliasPath = Luau::LanguageServer::AutoImports::computeBestAliasedPath(*realPath, availableAliases))
-                return {*aliasPath, SortText::AutoImportsAbsolute};
+                return std::pair{*aliasPath, SortText::AutoImportsAbsolute};
         }
+        return std::nullopt;
+    };
+
+    // Compute absolute path: prefer user-defined aliases, then fall back to @game/<virtual path>
+    auto computeAbsolute = [&]() -> std::pair<std::string, const char*>
+    {
+        if (auto aliased = computeAliased())
+            return *aliased;
 
         std::string path = targetNode->virtualPath;
         if (Luau::startsWith(path, "game/"))
             path = path.substr(5);
         return {"@game/" + path, SortText::AutoImportsAbsolute};
     };
+
+    // A nested game and the project around it are separate roots with no relative path between them. The project
+    // reaches into the game absolutely, but only a user-defined alias reaches back out
+    if (!isInSameVirtualRoot(fromNode->virtualPath, targetNode->virtualPath))
+        return Luau::startsWith(targetNode->virtualPath, "game/") ? std::optional{computeAbsolute()} : computeAliased();
 
     if (style == ImportRequireStyle::AlwaysAbsolute)
         return computeAbsolute();
@@ -539,7 +654,7 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(
                     return Luau::ModuleInfo{parentPath.value(), context->optional};
             }
 
-            return Luau::ModuleInfo{mapContext(context->name) + '/' + i->index.value, context->optional};
+            return Luau::ModuleInfo{getChildVirtualPath(context->name, i->index.value), context->optional};
         }
     }
     else if (auto* i_expr = node->as<Luau::AstExprIndexExpr>())
@@ -547,7 +662,7 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(
         if (auto* index = i_expr->index->as<Luau::AstExprConstantString>())
         {
             if (context)
-                return Luau::ModuleInfo{mapContext(context->name) + '/' + std::string(index->value.data, index->value.size), context->optional};
+                return Luau::ModuleInfo{getChildVirtualPath(context->name, std::string(index->value.data, index->value.size)), context->optional};
         }
     }
     else if (auto* call = node->as<Luau::AstExprCall>(); call && call->self && call->args.size >= 1 && context)
@@ -562,13 +677,19 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(
             }
             else if (func == "WaitForChild" || (func == "FindFirstChild" && call->args.size == 1)) // Don't allow recursive FFC
             {
-                return Luau::ModuleInfo{mapContext(context->name) + '/' + std::string(index->value.data, index->value.size), context->optional};
+                return Luau::ModuleInfo{getChildVirtualPath(context->name, std::string(index->value.data, index->value.size)), context->optional};
             }
             else if (func == "FindFirstAncestor")
             {
-                auto ancestorName = getAncestorPath(context->name, std::string(index->value.data, index->value.size), rootSourceNode);
+                std::string name(index->value.data, index->value.size);
+                auto ancestorName = getAncestorPath(context->name, name, rootSourceNode);
                 if (ancestorName)
                     return Luau::ModuleInfo{*ancestorName, context->optional};
+
+                // A nested DataModel keeps its own name, but its subtree is registered under `game`
+                if (const SourceNode* gameNode = getGameSourceNode();
+                    !nestedDataModelPath.empty() && gameNode && gameNode->name == name && Luau::startsWith(context->name, "game/"))
+                    return Luau::ModuleInfo{"game", context->optional};
             }
         }
     }

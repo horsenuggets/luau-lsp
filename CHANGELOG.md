@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+## `1.70.1-horse.1.15`
+
+### Added
+
+- Typed `game` from a `DataModel` node nested in a sourcemap whose root isn't one, such as a
+  development project that nests the game next to its scripts and tests. `game`,
+  `game:GetService(...)`, instance requires, `@game`, and the Studio companion plugin all use
+  the nested node, while Lune's `project` global keeps the project root.
+- Added folder navigation for standalone script references. Modifier-clicking a segment
+  that resolves to an ordinary folder, such as `project.Source`, reveals it in the VS Code
+  Explorer, while folders with an entry point still open it. Lune folders and sourcemap
+  `Folder` instances are both supported.
+
+### Changed
+
+- Extended `luau-lsp.documentLinks.enabled` to underline every navigable segment of a
+  standalone script reference, not just require arguments, so the setting now turns all
+  persistent navigation underlines on or off. Require arguments keep a single link to the
+  required module, which now also covers Lune `project` paths.
+- Changed hovers on any segment of a resolvable require path, such as `Components` in
+  `require(Package.Components.Base.Block)`, to describe the required module, matching
+  where the require link leads.
+
+### Fixed
+
+- Fixed navigation through the Lune `project` global resolving to symlink-resolved paths
+  (such as `/private/tmp` instead of `/tmp` on macOS), which opened duplicate editors and
+  kept folders from being revealed in the Explorer.
+
 ## `1.70.1-horse.1.14`
 
 ### Added

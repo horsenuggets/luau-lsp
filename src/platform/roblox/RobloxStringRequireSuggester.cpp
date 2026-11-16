@@ -39,10 +39,10 @@ std::unique_ptr<Luau::RequireNode> SourceNodeRequireNode::resolvePathToNode(cons
             }
         }
 
-        if (auto alias = parseAliasRequire(requireString); alias && alias->name == kGameAlias && rootNode)
+        if (auto alias = parseAliasRequire(requireString); alias && alias->name == kGameAlias && gameNode)
         {
-            if (auto targetNode = rootNode->walkPath(alias->remainder))
-                return std::make_unique<SourceNodeRequireNode>(targetNode, rootNode, mainRequirerNodeConfig, workspaceFolder);
+            if (auto targetNode = gameNode->walkPath(alias->remainder))
+                return std::make_unique<SourceNodeRequireNode>(targetNode, gameNode, mainRequirerNodeConfig, workspaceFolder);
         }
 
         return nullptr;
@@ -54,7 +54,7 @@ std::unique_ptr<Luau::RequireNode> SourceNodeRequireNode::resolvePathToNode(cons
 
     auto targetNode = baseNode->walkPath(requireString);
     if (targetNode)
-        return std::make_unique<SourceNodeRequireNode>(targetNode, rootNode, mainRequirerNodeConfig, workspaceFolder);
+        return std::make_unique<SourceNodeRequireNode>(targetNode, gameNode, mainRequirerNodeConfig, workspaceFolder);
 
     return nullptr;
 }
@@ -66,7 +66,7 @@ std::vector<std::unique_ptr<Luau::RequireNode>> SourceNodeRequireNode::getChildr
     for (const auto& child : node->children)
     {
         if (child->isScript() || !child->children.empty())
-            results.emplace_back(std::make_unique<SourceNodeRequireNode>(child, rootNode, mainRequirerNodeConfig, workspaceFolder));
+            results.emplace_back(std::make_unique<SourceNodeRequireNode>(child, gameNode, mainRequirerNodeConfig, workspaceFolder));
     }
 
     return results;
@@ -99,14 +99,14 @@ std::unique_ptr<Luau::RequireNode> SourcemapAwareFileRequireNode::resolvePathToN
 {
     LUAU_ASSERT(mainRequirerNodeConfig);
 
-    // `@game` is rooted at the DataModel, so it resolves against the sourcemap root even though this
+    // `@game` is rooted at the DataModel, so it resolves against the game node even though this
     // file has no node. A user-defined `game` alias in `.luaurc` still wins, and every other form
     // keeps the filesystem behaviour.
     if (auto alias = parseAliasRequire(requireString);
-        alias && alias->name == kGameAlias && rootNode && !mainRequirerNodeConfig->aliases.find(kGameAlias))
+        alias && alias->name == kGameAlias && gameNode && !mainRequirerNodeConfig->aliases.find(kGameAlias))
     {
-        if (auto targetNode = rootNode->walkPath(alias->remainder))
-            return std::make_unique<SourceNodeRequireNode>(targetNode, rootNode, mainRequirerNodeConfig, workspaceFolder);
+        if (auto targetNode = gameNode->walkPath(alias->remainder))
+            return std::make_unique<SourceNodeRequireNode>(targetNode, gameNode, mainRequirerNodeConfig, workspaceFolder);
         return nullptr;
     }
 
@@ -119,7 +119,7 @@ std::vector<Luau::RequireAlias> SourcemapAwareFileRequireNode::getAvailableAlias
 
     auto results = FileRequireNode::getAvailableAliases();
 
-    if (rootNode && !mainRequirerNodeConfig->aliases.find(kGameAlias))
+    if (gameNode && !mainRequirerNodeConfig->aliases.find(kGameAlias))
         results.emplace_back(Luau::RequireAlias{kGameAlias, {"Alias"}});
 
     return results;
@@ -130,13 +130,13 @@ std::unique_ptr<Luau::RequireNode> RobloxStringRequireSuggester::getNode(const L
     auto config = std::make_shared<const Luau::Config>(configResolver->getConfig(name, workspaceFolder->limits));
 
     if (auto it = platform->virtualPathsToSourceNodes.find(name); it != platform->virtualPathsToSourceNodes.end())
-        return std::make_unique<SourceNodeRequireNode>(it->second, platform->rootSourceNode, std::move(config), workspaceFolder);
+        return std::make_unique<SourceNodeRequireNode>(it->second, platform->getGameSourceNode(), std::move(config), workspaceFolder);
 
     // Fall back to filesystem-based node for modules not in the sourcemap. It still offers `@game`,
     // which does not depend on the requirer having a node.
     if (auto realUri = platform->resolveToRealPath(name))
         return std::make_unique<SourcemapAwareFileRequireNode>(
-            *realUri, realUri->isDirectory(), platform->rootSourceNode, workspaceFolder, std::move(config));
+            *realUri, realUri->isDirectory(), platform->getGameSourceNode(), workspaceFolder, std::move(config));
 
     return nullptr;
 }

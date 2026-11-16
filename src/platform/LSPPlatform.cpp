@@ -281,6 +281,20 @@ std::optional<Uri> luneNavigationSource(const WorkspaceFileResolver& fileResolve
 }
 } // namespace
 
+Uri toWorkspacePath(const Uri& workspaceRoot, const Uri& resolvedPath)
+{
+    std::error_code error;
+    auto canonical = std::filesystem::weakly_canonical(workspaceRoot.fsPath(), error);
+    if (error)
+        return resolvedPath;
+    auto canonicalRoot = Uri::file(canonical.generic_string());
+    if (resolvedPath == canonicalRoot)
+        return workspaceRoot;
+    if (!canonicalRoot.isAncestorOf(resolvedPath))
+        return resolvedPath;
+    return workspaceRoot.resolvePath(resolvedPath.lexicallyRelative(canonicalRoot));
+}
+
 std::optional<Luau::ModuleInfo> LSPPlatform::resolveNavigationModule(
     const Luau::ModuleInfo& context, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
 {
@@ -300,6 +314,8 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveNavigationModule(
                 std::error_code error;
                 auto canonical = std::filesystem::weakly_canonical(directory->fsPath(), error);
                 if (!error)
+                    // The root stays canonical so that Parent walks the real directories. Only
+                    // final targets are mapped onto the workspace's spelling.
                     if (auto root = findGitRoot(Uri::file(canonical.generic_string())))
                         return Luau::ModuleInfo{fileResolver->getModuleName(*root)};
             }
@@ -344,7 +360,32 @@ std::optional<Uri> LSPPlatform::navigationSource(const Luau::ModuleInfo& target,
     return path ? luneNavigationSource(*fileResolver, *path) : std::nullopt;
 }
 
-std::optional<Uri> LSPPlatform::resolveExpressionToSource(
+std::optional<Uri> LSPPlatform::navigationDirectory(const Luau::ModuleInfo& target)
+{
+    auto path = resolveToRealPath(target.name);
+    if (!path || !path->isDirectory())
+        return std::nullopt;
+    // Like Lune's GetFullName, only ordinary directories count. Any entry-point candidate
+    // makes the path a module, even when it's ambiguous or broken. Unsaved managed documents
+    // count too, matching luneNavigationSource.
+    auto isCandidate = [&](const Uri& candidate)
+    {
+        return candidate.exists() || fileResolver->getTextDocument(candidate);
+    };
+    auto sibling = *path;
+    for (const auto& suffix : {".luau", ".lua"})
+    {
+        sibling.path = path->path + suffix;
+        if (isCandidate(sibling))
+            return std::nullopt;
+    }
+    for (const auto& entry : {"init.luau", "init.lua", "default.project.json"})
+        if (isCandidate(path->resolvePath(entry)))
+            return std::nullopt;
+    return path;
+}
+
+std::optional<Luau::ModuleInfo> LSPPlatform::resolveExpressionToModule(
     const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
 {
     // The frontend module resolver only traces require arguments. Walk explicit receivers
@@ -381,8 +422,28 @@ std::optional<Uri> LSPPlatform::resolveExpressionToSource(
             return resolveNavigationModule(*context, expr, limits);
         return std::nullopt;
     };
-    if (auto target = resolve(expression))
-        return navigationSource(*target, limits);
+    return resolve(expression);
+}
+
+std::optional<Uri> LSPPlatform::resolveExpressionToSource(
+    const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
+{
+    // Navigation can walk symlink-resolved paths, so targets inside the workspace are mapped
+    // back onto the spelling that the editor opened.
+    if (auto target = resolveExpressionToModule(from, expression, limits))
+        if (auto source = navigationSource(*target, limits))
+            return toWorkspacePath(fileResolver->rootUri, *source);
+    return std::nullopt;
+}
+
+std::optional<Uri> LSPPlatform::resolveExpressionToDirectory(
+    const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
+{
+    auto target = resolveExpressionToModule(from, expression, limits);
+    if (!target || navigationSource(*target, limits))
+        return std::nullopt;
+    if (auto directory = navigationDirectory(*target))
+        return toWorkspacePath(fileResolver->rootUri, *directory);
     return std::nullopt;
 }
 

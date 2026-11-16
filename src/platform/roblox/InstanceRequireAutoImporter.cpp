@@ -110,6 +110,12 @@ std::vector<InstanceRequireResult> computeAllInstanceRequires(const InstanceRequ
         if (!isScriptContextCompatible(callerContext, node->scriptContext))
             continue;
 
+        // A nested game and the project around it are separate roots. The project can reach into the game absolutely
+        // through `game`, but nothing in the game reaches back out
+        bool crossesRoots = ctx.platform->isVirtualPath(ctx.from) && !isInSameVirtualRoot(ctx.from, path);
+        if (crossesRoots && !Luau::startsWith(path, "game/"))
+            continue;
+
         // Require through the closest (deepest) anchor the module is a descendant of, e.g.
         // `require(Main.X.Y)`; fall through to the standard style computation when there is none.
         if (ctx.config->requireStyle == ImportRequireStyle::NearestAbsolute)
@@ -152,10 +158,11 @@ std::vector<InstanceRequireResult> computeAllInstanceRequires(const InstanceRequ
         // Compute the style of require
         bool isRelative = false;
         auto parent1 = getParentPath(ctx.from), parent2 = getParentPath(path);
-        if (ctx.config->requireStyle == ImportRequireStyle::AlwaysRelative ||
-            Luau::startsWith(path, "ProjectRoot/") || // All model projects should always require relatively
-            (ctx.config->requireStyle != ImportRequireStyle::AlwaysAbsolute &&
-                (Luau::startsWith(ctx.from, path) || Luau::startsWith(path, ctx.from) || parent1 == parent2)))
+        if (!crossesRoots &&
+            (ctx.config->requireStyle == ImportRequireStyle::AlwaysRelative ||
+                Luau::startsWith(path, "ProjectRoot/") || // All model projects should always require relatively
+                (ctx.config->requireStyle != ImportRequireStyle::AlwaysAbsolute &&
+                    (Luau::startsWith(ctx.from, path) || Luau::startsWith(path, ctx.from) || parent1 == parent2))))
         {
             // HACK: using Uri's purely to access lexicallyRelative
             requirePath = "./" + Uri::file(path).lexicallyRelative(Uri::file(ctx.from));

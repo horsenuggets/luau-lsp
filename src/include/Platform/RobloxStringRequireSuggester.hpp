@@ -16,9 +16,9 @@ class SourceNodeRequireNode : public Luau::RequireNode
 {
 public:
     SourceNodeRequireNode(
-        const SourceNode* node, const SourceNode* rootNode, std::shared_ptr<const Luau::Config> mainRequirerNodeConfig, WorkspaceFolder* workspaceFolder)
+        const SourceNode* node, const SourceNode* gameNode, std::shared_ptr<const Luau::Config> mainRequirerNodeConfig, WorkspaceFolder* workspaceFolder)
         : node(node)
-        , rootNode(rootNode)
+        , gameNode(gameNode)
         , mainRequirerNodeConfig(std::move(mainRequirerNodeConfig))
         , workspaceFolder(workspaceFolder)
     {
@@ -33,21 +33,21 @@ public:
 
 private:
     const SourceNode* node;
-    const SourceNode* rootNode;
+    const SourceNode* gameNode;
     std::shared_ptr<const Luau::Config> mainRequirerNodeConfig;
     WorkspaceFolder* workspaceFolder;
 };
 
 /// A requirer that the sourcemap does not cover, such as build output. It keeps its filesystem
 /// identity for relative requires and `.luaurc` aliases, and adds the built-in `@game` alias, which
-/// is absolute and so needs the sourcemap root rather than the requirer.
+/// is absolute and so needs the game node rather than the requirer.
 class SourcemapAwareFileRequireNode : public FileRequireNode
 {
 public:
-    SourcemapAwareFileRequireNode(Uri uri, bool isDirectory, const SourceNode* rootNode, WorkspaceFolder* workspaceFolder,
+    SourcemapAwareFileRequireNode(Uri uri, bool isDirectory, const SourceNode* gameNode, WorkspaceFolder* workspaceFolder,
         std::shared_ptr<const Luau::Config> mainRequirerNodeConfig)
         : FileRequireNode(std::move(uri), isDirectory, workspaceFolder, std::move(mainRequirerNodeConfig))
-        , rootNode(rootNode)
+        , gameNode(gameNode)
     {
     }
 
@@ -55,7 +55,7 @@ public:
     std::vector<Luau::RequireAlias> getAvailableAliases() const override;
 
 private:
-    const SourceNode* rootNode;
+    const SourceNode* gameNode;
 };
 
 class RobloxStringRequireSuggester : public Luau::RequireSuggester

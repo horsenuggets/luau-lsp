@@ -556,6 +556,18 @@ void RobloxPlatform::writePathsToMap(SourceNode* node, const std::string& base, 
 
     for (auto& child : node->children)
     {
+        child->containingNode = node;
+
+        // A root that isn't a DataModel can nest the game. Root it at `game` with no parent, as in Roblox, so that
+        // instance requires, `GetService`, and `@game` resolve into it
+        if (child->className == "DataModel" && rootSourceNode && rootSourceNode->findDataModel() == child)
+        {
+            child->parent = nullptr;
+            nestedDataModelPath = base + "/" + child->name;
+            writePathsToMap(child, "game");
+            continue;
+        }
+
         child->parent = node;
         writePathsToMap(child, base + "/" + child->name, childNameContext);
     }
@@ -566,6 +578,7 @@ void RobloxPlatform::rebuildPathMaps()
     realPathsToSourceNodes.clear();
     virtualPathsToSourceNodes.clear();
     directoryToSourceNodes.clear();
+    nestedDataModelPath.clear();
     if (rootSourceNode)
         writePathsToMap(rootSourceNode, rootSourceNode->className == "DataModel" ? "game" : "ProjectRoot");
 }
@@ -613,14 +626,16 @@ void RobloxPlatform::handleSourcemapUpdate(Luau::Frontend& frontend, const Luau:
     getSourcemapType(globals, instanceTypes, rootSourceNode);
 
     // Modify sourcemap types
-    if (rootSourceNode->className == "DataModel")
+    if (auto dataModel = rootSourceNode->findDataModel())
     {
+        const SourceNode* dataModelNode = *dataModel;
+
         // Mutate DataModel with its children
         if (auto dataModelType = globals.globalScope->lookupType("DataModel"))
-            addChildrenToCTV(globals, instanceTypes, dataModelType->type, rootSourceNode);
+            addChildrenToCTV(globals, instanceTypes, dataModelType->type, dataModelNode);
 
         // Mutate globally-registered Services to include children information (so it's available through :GetService)
-        for (const auto& service : rootSourceNode->children)
+        for (const auto& service : dataModelNode->children)
         {
             auto serviceName = service->className; // We know it must be a service of the same class name
             if (auto serviceType = globals.globalScope->lookupType(serviceName))
@@ -643,7 +658,7 @@ void RobloxPlatform::handleSourcemapUpdate(Luau::Frontend& frontend, const Luau:
                 // Player.PlayerGui should contain StarterGui instances
                 if (auto playerGuiType = globals.globalScope->lookupType("PlayerGui"))
                 {
-                    if (auto starterGui = rootSourceNode->findChild("StarterGui"))
+                    if (auto starterGui = dataModelNode->findChild("StarterGui"))
                         addChildrenToCTV(globals, instanceTypes, playerGuiType->type, *starterGui);
                     ctv->props["PlayerGui"] = Luau::makeProperty(playerGuiType->type);
                 }
@@ -651,7 +666,7 @@ void RobloxPlatform::handleSourcemapUpdate(Luau::Frontend& frontend, const Luau:
                 // Player.StarterGear should contain StarterPack instances
                 if (auto starterGearType = globals.globalScope->lookupType("StarterGear"))
                 {
-                    if (auto starterPack = rootSourceNode->findChild("StarterPack"))
+                    if (auto starterPack = dataModelNode->findChild("StarterPack"))
                         addChildrenToCTV(globals, instanceTypes, starterGearType->type, *starterPack);
 
                     ctv->props["StarterGear"] = Luau::makeProperty(starterGearType->type);
@@ -660,7 +675,7 @@ void RobloxPlatform::handleSourcemapUpdate(Luau::Frontend& frontend, const Luau:
                 // Player.PlayerScripts should contain StarterPlayerScripts instances
                 if (auto playerScriptsType = globals.globalScope->lookupType("PlayerScripts"))
                 {
-                    if (auto starterPlayer = rootSourceNode->findChild("StarterPlayer"))
+                    if (auto starterPlayer = dataModelNode->findChild("StarterPlayer"))
                     {
                         if (auto starterPlayerScripts = starterPlayer.value()->findChild("StarterPlayerScripts"))
                         {
@@ -739,6 +754,13 @@ std::optional<const SourceNode*> RobloxPlatform::getSourceNodeFromVirtualPath(co
     return std::nullopt;
 }
 
+const SourceNode* RobloxPlatform::getGameSourceNode() const
+{
+    if (auto game = getSourceNodeFromVirtualPath("game"))
+        return *game;
+    return rootSourceNode;
+}
+
 std::optional<const SourceNode*> RobloxPlatform::getSourceNodeFromRealPath(const Uri& name) const
 {
     if (auto it = realPathsToSourceNodes.find(name); it != realPathsToSourceNodes.end())
@@ -774,9 +796,10 @@ std::optional<const SourceNode*> RobloxPlatform::getProjectSourceNode(const Luau
 
     // A project file can nest another one from the same directory (e.g. a `$path` to `default.project.json`), possibly
     // through ordinary folder nodes, and the directory map keeps the deepest node. Use the outermost ancestor that was
-    // also created from a project file in this directory
+    // also created from a project file in this directory. Walk containing nodes rather than Roblox parents, so that a
+    // nested DataModel still reaches the project around it
     const SourceNode* node = it->second;
-    for (const SourceNode* ancestor = node->parent; ancestor; ancestor = ancestor->parent)
+    for (const SourceNode* ancestor = node->containingNode; ancestor; ancestor = ancestor->containingNode)
     {
         auto directories = projectFileDirectories(fileResolver->rootUri, ancestor);
         if (std::find(directories.begin(), directories.end(), *gitRoot) != directories.end())
