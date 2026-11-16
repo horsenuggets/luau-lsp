@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+## `1.70.1-horse.1.15`
+
 ### Added
 
+- Typed `game` from a `DataModel` node nested in a sourcemap whose root isn't one, such as a
+  development project that nests the game next to its scripts and tests. `game`,
+  `game:GetService(...)`, instance requires, `@game`, and the Studio companion plugin all use
+  the nested node, while Lune's `project` global keeps the project root.
 - Added folder navigation for standalone script references. Modifier-clicking a segment
   that resolves to an ordinary folder, such as `project.Source`, reveals it in the VS Code
   Explorer, while folders with an entry point still open it. Lune folders and sourcemap

@@ -94,6 +94,34 @@ std::optional<const SourceNode*> SourceNode::findDescendant(const std::string& c
     return std::nullopt;
 }
 
+std::optional<SourceNode*> SourceNode::findDataModel()
+{
+    std::queue<SourceNode*> queue{};
+    queue.push(this);
+
+    while (!queue.empty())
+    {
+        auto next = queue.front();
+        queue.pop();
+
+        if (next->className == "DataModel")
+            return next;
+
+        for (const auto& child : next->children)
+            queue.push(child);
+    }
+    return std::nullopt;
+}
+
+bool SourceNode::containsDataModel() const
+{
+    return className == "DataModel" || std::any_of(children.begin(), children.end(),
+                                            [](const SourceNode* child)
+                                            {
+                                                return child->containsDataModel();
+                                            });
+}
+
 bool SourceNode::containsFilePaths() const
 {
     return !filePaths.empty() || std::any_of(children.begin(), children.end(),
@@ -213,7 +241,9 @@ ordered_json SourceNode::toJson() const
         ordered_json children_array = ordered_json::array();
         for (const auto* child : children)
         {
-            if (!child->containsFilePaths())
+            // Keep a nested DataModel and the nodes enclosing it even without files, since plugin information can only
+            // attach to the game
+            if (!child->containsFilePaths() && !child->containsDataModel())
             {
                 continue;
             }

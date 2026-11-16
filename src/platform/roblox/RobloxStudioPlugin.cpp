@@ -124,14 +124,14 @@ bool RobloxPlatform::hydrateSourcemapWithPluginInfo()
         rootSourceNode = sourceNodeAllocator.allocate(SourceNode("game", "DataModel", {}, {}));
     }
 
-
-    if (rootSourceNode->className != "DataModel")
+    auto dataModel = rootSourceNode->findDataModel();
+    if (!dataModel)
     {
-        std::cerr << "Attempted to update plugin information for a non-DM instance" << '\n';
+        std::cerr << "Attempted to update plugin information for a sourcemap without a DataModel" << '\n';
         return false;
     }
 
-    bool didUpdateSourcemap = mutateSourceNodeWithPluginInfo(rootSourceNode, pluginInfo, sourceNodeAllocator);
+    bool didUpdateSourcemap = mutateSourceNodeWithPluginInfo(*dataModel, pluginInfo, sourceNodeAllocator);
 
     if (didUpdateSourcemap)
     {

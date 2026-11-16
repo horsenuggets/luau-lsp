@@ -39,16 +39,23 @@ struct AliasRequire
 /// Splits an alias require into its parts. Returns nullopt when the string is not an alias require.
 std::optional<AliasRequire> parseAliasRequire(const std::string& requiredString);
 
-/// The name of the built-in alias that resolves against the sourcemap root.
+/// The name of the built-in alias that resolves against the game node (see `RobloxPlatform::getGameSourceNode`).
 const std::string kGameAlias = "game";
 
 /// Finds the nearest directory at or above `directory` that contains a `.git` entry (a directory, or a file in
 /// worktrees and submodules), matching how Lune resolves its `project` global.
 std::optional<Uri> findGitRoot(const Uri& directory);
 
+/// Whether two virtual paths share a root (`game` or `ProjectRoot`). A nested DataModel is a separate root from the
+/// project around it.
+bool isInSameVirtualRoot(const Luau::ModuleName& first, const Luau::ModuleName& second);
+
 struct SourceNode
 {
     const SourceNode* parent = nullptr; // Can be null! NOT POPULATED BY SOURCEMAP, must be written to manually
+    // The node this one is nested under in the sourcemap. Matches `parent`, except that a nested DataModel has no
+    // Roblox parent but is still contained in the project. NB: NOT POPULATED BY SOURCEMAP, must be written to manually
+    const SourceNode* containingNode = nullptr;
     std::string name;
     std::string className;
     std::vector<std::string> filePaths{};
@@ -69,6 +76,9 @@ struct SourceNode
     Luau::SourceCode::Type sourceCodeType() const;
     std::optional<SourceNode*> findChild(const std::string& name) const;
     std::optional<const SourceNode*> findDescendant(const std::string& name) const;
+    /// BFS search for the game, which is this node if it is a DataModel, or else its shallowest DataModel descendant
+    /// (e.g. a development project that nests the game next to its scripts and tests)
+    std::optional<SourceNode*> findDataModel();
     // O(n) search for ancestor of name
     std::optional<const SourceNode*> findAncestor(const std::string& name) const;
     bool isAncestorOf(const SourceNode* other) const;
@@ -80,6 +90,7 @@ struct SourceNode
     /// nodes detached from the tree (which `RobloxPlatform::clearSourcemapTypes` cannot reach)
     void clearCachedTypes() const;
 
+    bool containsDataModel() const;
     bool containsFilePaths() const;
     ordered_json toJson() const;
 
@@ -113,6 +124,17 @@ private:
     // Maps wrapper module names to the inner module they re-export types from (for Wally wrappers)
     mutable std::unordered_map<Luau::ModuleName, Luau::ModuleName> wallyReexportSources{};
 
+    // The project path a nested DataModel would have had (e.g. `ProjectRoot/Source/DataModel`), or empty when the game
+    // isn't nested. Its subtree is registered under `game` instead
+    std::string nestedDataModelPath;
+
+    /// Rewrites a project path into a nested DataModel (e.g. `ProjectRoot/Source/DataModel/X`) to its `game` path
+    Luau::ModuleName canonicalizeVirtualPath(const Luau::ModuleName& path) const;
+
+    /// The virtual path of a named child, mapping player containers to their starter folders and a nested DataModel
+    /// reached through the project to `game`
+    Luau::ModuleName getChildVirtualPath(const Luau::ModuleName& parent, const std::string& child) const;
+
     std::optional<const SourceNode*> getSourceNodeFromVirtualPath(const Luau::ModuleName& name) const;
     std::optional<const SourceNode*> getSourceNodeFromRealPath(const Uri& name) const;
 
@@ -138,6 +160,10 @@ public:
     Luau::TypedAllocator<PluginNode> pluginNodeAllocator;
 
     mutable std::unordered_map<Luau::ModuleName, const SourceNode*> virtualPathsToSourceNodes{};
+
+    /// The node that `@game` resolves against. This is the DataModel, which may be nested inside a root that isn't
+    /// one, or else the root itself.
+    const SourceNode* getGameSourceNode() const;
 
     Luau::TypeArena instanceTypes;
 

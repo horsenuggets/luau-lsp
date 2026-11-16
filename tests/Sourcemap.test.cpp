@@ -2139,4 +2139,300 @@ TEST_CASE_FIXTURE(Fixture, "project_is_not_typed_outside_a_git_repository")
     CHECK(Luau::get<Luau::UnknownSymbol>(result.errors[0]));
 }
 
+// A development project file whose root mirrors the repository directories, with the game nested inside `Source`
+static const char* NESTED_DATA_MODEL_SOURCEMAP = R"(
+    {
+        "name": "my-game-dev",
+        "className": "Folder",
+        "filePaths": ["dev.project.json"],
+        "children": [
+            {
+                "name": "Source",
+                "className": "Folder",
+                "children": [
+                    {
+                        "name": "DataModel",
+                        "className": "DataModel",
+                        "children": [
+                            {
+                                "name": "ReplicatedStorage",
+                                "className": "ReplicatedStorage",
+                                "children": [
+                                    {"name": "Shared", "className": "ModuleScript", "filePaths": ["Source/DataModel/ReplicatedStorage/Shared.luau"]},
+                                    {"name": "Marker", "className": "Part"}
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {"name": "Tests", "className": "Folder"}
+        ]
+    }
+)";
+
+TEST_CASE("find_data_model_finds_the_root_or_its_shallowest_data_model_descendant")
+{
+    SourceNode deep("Deep", "DataModel", {}, {});
+    SourceNode folder("Folder", "Folder", {}, {&deep});
+    SourceNode shallow("Shallow", "DataModel", {}, {});
+    SourceNode root("Root", "Folder", {}, {&folder, &shallow});
+    CHECK(root.findDataModel() == &shallow);
+    CHECK(deep.findDataModel() == &deep);
+
+    SourceNode leaf("Leaf", "Folder", {}, {});
+    SourceNode withoutDataModel("Root", "Folder", {}, {&leaf});
+    CHECK_FALSE(withoutDataModel.findDataModel());
+}
+
+TEST_CASE_FIXTURE(Fixture, "nested_data_model_is_rooted_at_game")
+{
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
+    auto dataModel = platform->rootSourceNode->findDataModel();
+    REQUIRE(dataModel);
+    CHECK_EQ((*dataModel)->virtualPath, "game");
+    CHECK_FALSE((*dataModel)->parent);
+    CHECK_EQ(platform->getGameSourceNode(), *dataModel);
+
+    auto shared = workspace.rootUri.resolvePath("Source/DataModel/ReplicatedStorage/Shared.luau");
+    CHECK_EQ(platform->resolveToVirtualPath(shared), "game/ReplicatedStorage/Shared");
+    CHECK_EQ(platform->resolveToRealPath("game/ReplicatedStorage/Shared"), shared);
+}
+
+TEST_CASE_FIXTURE(Fixture, "game_and_services_are_typed_from_a_nested_data_model")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    auto result = check(R"(
+        --!strict
+        local direct = game.ReplicatedStorage.Marker
+        local service = game:GetService("ReplicatedStorage").Marker
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("direct")) == "Part");
+    CHECK(Luau::toString(requireType("service")) == "Part");
+}
+
+TEST_CASE_FIXTURE(Fixture, "requires_resolve_into_a_nested_data_model")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    newDocument("Source/DataModel/ReplicatedStorage/Shared.luau", "return { value = 1 }");
+    auto result = check(R"(
+        --!strict
+        local direct = require(game.ReplicatedStorage.Shared).value
+        local service = require(game:GetService("ReplicatedStorage").Shared).value
+        local alias = require("@game/ReplicatedStorage/Shared").value
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("direct")) == "number");
+    CHECK(Luau::toString(requireType("service")) == "number");
+    CHECK(Luau::toString(requireType("alias")) == "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_is_still_typed_with_a_nested_data_model")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    auto result = check(R"(
+        --!strict
+        local tests = project.Tests
+        local dataModel = project.Source.DataModel
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("tests")) == "Instance");
+    CHECK(Luau::toString(requireType("dataModel")) == "DataModel");
+}
+
+TEST_CASE_FIXTURE(Fixture, "require_through_project_enters_a_nested_data_model")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    newDocument("Source/DataModel/ReplicatedStorage/Shared.luau", "return { value = 1 }");
+    auto result = check(R"(
+        --!strict
+        local dotted = require(project.Source.DataModel.ReplicatedStorage.Shared).value
+        local bracketed = require(project.Source["DataModel"].ReplicatedStorage.Shared).value
+        local waited = require(project.Source:WaitForChild("DataModel").ReplicatedStorage.Shared).value
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("dotted")) == "number");
+    CHECK(Luau::toString(requireType("bracketed")) == "number");
+    CHECK(Luau::toString(requireType("waited")) == "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "find_first_ancestor_reaches_a_nested_data_model_by_name")
+{
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    Luau::ModuleInfo context{"game/ReplicatedStorage/Shared"};
+    Luau::AstStatBlock* block = parse(R"(
+        local _ = node:FindFirstAncestor("DataModel")
+    )");
+    REQUIRE(block);
+    auto local = block->body.data[0]->as<Luau::AstStatLocal>();
+    REQUIRE(local);
+
+    auto resolved = workspace.platform->resolveModule(&context, local->values.data[0], workspace.limits);
+    REQUIRE(resolved);
+    CHECK_EQ(resolved->name, "game");
+}
+
+TEST_CASE_FIXTURE(Fixture, "relative_string_require_from_the_project_enters_a_nested_data_model")
+{
+    // The game's files live under `game/`, not under the project path the require walks
+    loadSourcemap(R"(
+        {
+            "name": "my-game-dev",
+            "className": "Folder",
+            "children": [
+                {
+                    "name": "Source",
+                    "className": "Folder",
+                    "children": [
+                        {"name": "Runner", "className": "ModuleScript", "filePaths": ["tools/Runner.luau"]},
+                        {
+                            "name": "DataModel",
+                            "className": "DataModel",
+                            "children": [
+                                {
+                                    "name": "ReplicatedStorage",
+                                    "className": "ReplicatedStorage",
+                                    "children": [{"name": "Shared", "className": "ModuleScript", "filePaths": ["game/Shared.luau"]}]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    )");
+
+    newDocument("game/Shared.luau", "return { value = 1 }");
+    auto uri = newDocument("tools/Runner.luau", R"(
+        --!strict
+        local value = require("./DataModel/ReplicatedStorage/Shared").value
+    )");
+
+    auto moduleName = workspace.fileResolver.getModuleName(uri);
+    auto result = workspace.frontend.check(moduleName);
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType(getModule(moduleName), "value")) == "number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "relative_string_requires_treat_a_nested_data_model_as_a_root")
+{
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+    auto platform = workspace.fileResolver.platform;
+
+    auto resolve = [&](const std::string& from, const std::string& require) -> std::optional<std::string>
+    {
+        Luau::ModuleInfo context{from};
+        if (auto result = platform->resolveStringRequire(&context, require, workspace.limits))
+            return result->name;
+        return std::nullopt;
+    };
+
+    // Entering the game mid-path continues in its subtree, however the segments reach it
+    CHECK_EQ(resolve("ProjectRoot/Source/Runner", "./DataModel/ReplicatedStorage/Shared"), "game/ReplicatedStorage/Shared");
+    CHECK_EQ(resolve("ProjectRoot/Source/Runner", "./DataModel/ReplicatedStorage/../ReplicatedStorage/Shared"), "game/ReplicatedStorage/Shared");
+
+    // The game has no parent, so neither side can climb out of it into the project
+    CHECK_FALSE(resolve("game/ReplicatedStorage/Shared", "../../Tests"));
+    CHECK_FALSE(resolve("ProjectRoot/Source/Runner", "./DataModel/../Tests"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "sourcemap_json_keeps_a_nested_data_model_without_files")
+{
+    loadSourcemap(R"(
+        {
+            "name": "my-game-dev",
+            "className": "Folder",
+            "children": [
+                {"name": "Source", "className": "Folder", "children": [{"name": "DataModel", "className": "DataModel"}]},
+                {"name": "Empty", "className": "Folder"},
+                {"name": "Tests", "className": "Folder", "children": [{"name": "Runner", "className": "ModuleScript", "filePaths": ["Tests/Runner.luau"]}]}
+            ]
+        }
+    )");
+
+    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
+    auto json = platform->rootSourceNode->toJson();
+
+    // The fileless folder enclosing the game survives, while other fileless folders are still pruned
+    REQUIRE(json.contains("children"));
+    auto children = json["children"];
+    REQUIRE_EQ(children.size(), 2);
+    CHECK_EQ(children[0]["name"], "Source");
+    CHECK_EQ(children[0]["children"][0]["className"], "DataModel");
+    CHECK_EQ(children[1]["name"], "Tests");
+}
+
+TEST_CASE_FIXTURE(Fixture, "project_reaches_past_a_nested_data_model_from_the_same_directory")
+{
+    client->globalConfig.diagnostics.strictDatamodelTypes = true;
+    tempDir.touch_child(".git/HEAD");
+
+    // The DataModel comes from a second project file at the repository root, so the directory index keeps it as the
+    // deepest node there, and `project` must still walk out to the development project around it
+    loadSourcemap(R"(
+        {
+            "name": "my-game-dev",
+            "className": "Folder",
+            "filePaths": ["dev.project.json"],
+            "children": [
+                {
+                    "name": "Game",
+                    "className": "DataModel",
+                    "filePaths": ["default.project.json"],
+                    "children": [{"name": "ReplicatedStorage", "className": "ReplicatedStorage"}]
+                },
+                {"name": "Tests", "className": "Folder"}
+            ]
+        }
+    )");
+
+    auto result = check(R"(
+        --!strict
+        local tests = project.Tests
+    )");
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType("tests")) == "Instance");
+}
+
+TEST_CASE_FIXTURE(Fixture, "plugin_info_hydrates_a_nested_data_model")
+{
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
+    platform->onStudioPluginFullChange(json::parse(R"(
+        {
+            "Name": "game",
+            "ClassName": "DataModel",
+            "Children": [{"Name": "Workspace", "ClassName": "Workspace", "Children": [{"Name": "Baseplate", "ClassName": "Part"}]}]
+        }
+    )"));
+
+    auto dataModel = platform->rootSourceNode->findDataModel();
+    REQUIRE(dataModel);
+    auto workspaceNode = (*dataModel)->findChild("Workspace");
+    REQUIRE(workspaceNode);
+    CHECK((*workspaceNode)->pluginManaged);
+    CHECK_FALSE(platform->rootSourceNode->findChild("Workspace"));
+}
+
 TEST_SUITE_END();
