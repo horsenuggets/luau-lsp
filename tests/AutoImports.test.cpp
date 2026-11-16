@@ -5,6 +5,8 @@
 #include "LSP/IostreamHelpers.hpp"
 #include "Platform/StringRequireAutoImporter.hpp"
 
+#include <algorithm>
+
 static std::optional<lsp::CompletionItem> getItem(const std::vector<lsp::CompletionItem>& items, const std::string& label)
 {
     for (const auto& item : items)
@@ -2876,9 +2878,10 @@ static const char* NESTED_DATA_MODEL_AUTO_IMPORTS_SOURCEMAP = R"(
     }
 )";
 
-static std::vector<lsp::CompletionItem> completeAutoImports(Fixture& fixture, const std::string& file, const std::string& name)
+static std::vector<lsp::CompletionItem> completeAutoImports(
+    Fixture& fixture, const std::string& file, const std::string& name, const std::string& prefix = "")
 {
-    auto [source, marker] = sourceWithMarker(R"(|)");
+    auto [source, marker] = sourceWithMarker(prefix + "|");
     auto uri = fixture.newDocument(file, source);
 
     lsp::CompletionParams params;
@@ -2888,15 +2891,26 @@ static std::vector<lsp::CompletionItem> completeAutoImports(Fixture& fixture, co
     return filterAutoImports(fixture.workspace.completion(params, nullptr), name);
 }
 
-TEST_CASE_FIXTURE(Fixture, "auto_imports_do_not_cross_between_a_nested_game_and_its_project")
+static bool hasEditContaining(const lsp::CompletionItem& item, const std::string& text)
+{
+    return std::any_of(item.additionalTextEdits.begin(), item.additionalTextEdits.end(),
+        [&](const lsp::TextEdit& edit)
+        {
+            return edit.newText.find(text) != std::string::npos;
+        });
+}
+
+static const std::initializer_list<ImportRequireStyle> ALL_REQUIRE_STYLES = {
+    ImportRequireStyle::Auto, ImportRequireStyle::AlwaysRelative, ImportRequireStyle::AlwaysAbsolute, ImportRequireStyle::NearestAbsolute};
+
+TEST_CASE_FIXTURE(Fixture, "auto_imports_from_a_nested_game_do_not_reach_its_project")
 {
     client->globalConfig.completion.imports.enabled = true;
     loadSourcemap(NESTED_DATA_MODEL_AUTO_IMPORTS_SOURCEMAP);
 
     for (bool stringRequires : {true, false})
     {
-        for (auto style : {ImportRequireStyle::Auto, ImportRequireStyle::AlwaysRelative, ImportRequireStyle::AlwaysAbsolute,
-                 ImportRequireStyle::NearestAbsolute})
+        for (auto style : ALL_REQUIRE_STYLES)
         {
             CAPTURE(stringRequires);
             CAPTURE(static_cast<int>(style));
@@ -2904,9 +2918,56 @@ TEST_CASE_FIXTURE(Fixture, "auto_imports_do_not_cross_between_a_nested_game_and_
             client->globalConfig.completion.imports.requireStyle = style;
 
             CHECK(completeAutoImports(*this, "game/Shared.luau", "Runner").empty());
-            CHECK(completeAutoImports(*this, "Tests/Runner.luau", "Shared").empty());
         }
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "string_auto_imports_from_the_project_reach_a_nested_game_absolutely")
+{
+    client->globalConfig.completion.imports.enabled = true;
+    client->globalConfig.completion.imports.stringRequires.enabled = true;
+    loadSourcemap(NESTED_DATA_MODEL_AUTO_IMPORTS_SOURCEMAP);
+
+    for (auto style : ALL_REQUIRE_STYLES)
+    {
+        CAPTURE(static_cast<int>(style));
+        client->globalConfig.completion.imports.requireStyle = style;
+
+        auto imports = completeAutoImports(*this, "Tests/Runner.luau", "Shared");
+        REQUIRE_EQ(imports.size(), 1);
+        CHECK(hasEditContaining(imports[0], "require(\"@game/ReplicatedStorage/Shared\")"));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "instance_auto_imports_from_the_project_reach_a_nested_game_absolutely")
+{
+    client->globalConfig.completion.imports.enabled = true;
+    client->globalConfig.completion.imports.stringRequires.enabled = false;
+    loadSourcemap(NESTED_DATA_MODEL_AUTO_IMPORTS_SOURCEMAP);
+
+    for (auto style : ALL_REQUIRE_STYLES)
+    {
+        CAPTURE(static_cast<int>(style));
+        client->globalConfig.completion.imports.requireStyle = style;
+
+        auto imports = completeAutoImports(*this, "Tests/Runner.luau", "Shared");
+        REQUIRE_EQ(imports.size(), 1);
+        CHECK(hasEditContaining(imports[0], "require(ReplicatedStorage.Shared)"));
+        CHECK(hasEditContaining(imports[0], "game:GetService(\"ReplicatedStorage\")"));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "nearest_absolute_auto_imports_from_the_project_use_a_game_anchor")
+{
+    client->globalConfig.completion.imports.enabled = true;
+    client->globalConfig.completion.imports.stringRequires.enabled = false;
+    client->globalConfig.completion.imports.requireStyle = ImportRequireStyle::NearestAbsolute;
+    loadSourcemap(NESTED_DATA_MODEL_AUTO_IMPORTS_SOURCEMAP);
+
+    auto imports = completeAutoImports(*this, "Tests/Runner.luau", "Shared", "local Storage = game:GetService(\"ReplicatedStorage\")\n");
+
+    REQUIRE_EQ(imports.size(), 1);
+    CHECK(hasEditContaining(imports[0], "require(Storage.Shared)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_auto_imports_reach_across_a_nested_game_through_an_alias")

@@ -408,11 +408,6 @@ static std::optional<std::pair<std::string, const char*>> computeSourcemapRequir
         return std::nullopt;
     };
 
-    // A nested game and the project around it are separate roots with no instance path between them, so only a
-    // user-defined alias can reach across
-    if (!isInSameVirtualRoot(fromNode->virtualPath, targetNode->virtualPath))
-        return computeAliased();
-
     // Compute absolute path: prefer user-defined aliases, then fall back to @game/<virtual path>
     auto computeAbsolute = [&]() -> std::pair<std::string, const char*>
     {
@@ -424,6 +419,11 @@ static std::optional<std::pair<std::string, const char*>> computeSourcemapRequir
             path = path.substr(5);
         return {"@game/" + path, SortText::AutoImportsAbsolute};
     };
+
+    // A nested game and the project around it are separate roots with no relative path between them. The project
+    // reaches into the game absolutely, but only a user-defined alias reaches back out
+    if (!isInSameVirtualRoot(fromNode->virtualPath, targetNode->virtualPath))
+        return Luau::startsWith(targetNode->virtualPath, "game/") ? std::optional{computeAbsolute()} : computeAliased();
 
     if (style == ImportRequireStyle::AlwaysAbsolute)
         return computeAbsolute();
