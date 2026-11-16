@@ -22,6 +22,7 @@ import {
 } from "./bytecode";
 
 import { onTypeFormattingMiddleware } from "./onTypeFormattingMiddleware";
+import { FolderRevealer } from "./folderReveal";
 
 import { registerRequireGraph } from "./requireGraph";
 
@@ -502,6 +503,9 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
 
   const serverOptions: ServerOptions = { run, debug };
 
+  const folderRevealer = new FolderRevealer();
+  clientDisposables.push(folderRevealer);
+
   const clientOptions: LanguageClientOptions = {
     documentSelector: vscode.workspace
       .getConfiguration("luau-lsp")
@@ -526,6 +530,9 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     },
     initializationOptions: {
       fflags,
+      // The definition middleware below and VS Code's revealInExplorer command, which folder
+      // document links use, reveal folders in the Explorer.
+      folderNavigation: true,
     },
     markdown: {
       supportHtml: true,
@@ -533,6 +540,7 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     errorHandler: new ClientErrorHandler(context, 4),
     middleware: {
       provideOnTypeFormattingEdits: onTypeFormattingMiddleware,
+      provideDefinition: folderRevealer.provideDefinition,
     },
   };
 

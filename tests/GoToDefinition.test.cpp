@@ -1092,6 +1092,25 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_resolves_unsaved_m
     CHECK(definition("local value = project.Uns|aved").empty());
 }
 
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_folder_navigation_treats_unsaved_entry_points_as_modules")
+{
+    lune();
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Ambiguous/Child.luau", "return {}\n");
+    tempDir.write_child("Entry/Child.luau", "return {}\n");
+    tempDir.write_child("Plain/Child.luau", "return {}\n");
+    // Ambiguous modules stay rejected instead of falling back to their folder.
+    newDocument("Ambiguous.luau", "return {}\n");
+    newDocument("Ambiguous.lua", "return {}\n");
+    newDocument("Entry/init.luau", "return {}\n");
+    newDocument("Entry/init.lua", "return {}\n");
+
+    CHECK(definition("local value = project.Ambig|uous").empty());
+    CHECK(definition("local value = project.Ent|ry").empty());
+    target("local value = project.Pla|in", "Plain");
+}
+
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_project_navigation_uses_nearest_git_file_or_directory")
 {
     lune();
@@ -1149,7 +1168,6 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_rejects_nonreferen
              "local value = project.Mis|sing",
              "local value = script.Missing.Par|ent",
              "local value = script.Missing.Parent.Ch|ild",
-             "local value = project.Emp|ty",
              "local value = project.Bo|th",
              "local value = project.Mix|ed",
              "local value = project.Doub|le",
@@ -1169,6 +1187,11 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_rejects_nonreferen
         CAPTURE(source);
         CHECK(definition(source).empty());
     }
+    // An ordinary directory has no source, so the folder itself is returned to clients that
+    // can show it.
+    CHECK(definition("local value = project.Emp|ty").empty());
+    client->folderNavigation = true;
+    target("local value = project.Emp|ty", "Empty");
 }
 
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_project_navigation_requires_a_git_root")
@@ -1203,5 +1226,139 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "standard_platform_does_not_enable_
     CHECK(definition("local value = script.Ch|ild").empty());
     CHECK(definition("local value = project.Ch|ild").empty());
 }
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_locates_sourcemap_folders_by_their_own_files")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Package/src/Foo.luau", "return {}\n");
+    tempDir.write_child("Specs/init.spec.luau", "return {}\n");
+    // Outer and Inner both have project files in "Package", and "init.spec" is an ordinary
+    // script rather than its folder's entry point.
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Outer","className":"Folder","filePaths":["Package/dev.project.json"],"children":[
+            {"name":"Inner","className":"Folder","filePaths":["Package/default.project.json"],"children":[
+                {"name":"Foo","className":"ModuleScript","filePaths":["Package/src/Foo.luau"]}
+            ]}
+        ]},
+        {"name":"Specs","className":"Folder","children":[
+            {"name":"init.spec","className":"ModuleScript","filePaths":["Specs/init.spec.luau"]}
+        ]}
+    ]})");
+
+    target("local value = project.Out|er", "Package");
+    target("local value = project.Spe|cs", "Specs");
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_omits_virtual_project_containers")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source/Foo.luau", "return {}\n");
+    // A and B only exist in the project file, so taking one directory up per level would map
+    // B to the workspace root and A outside of it.
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"A","className":"Folder","children":[
+            {"name":"B","className":"Folder","children":[
+                {"name":"Source","className":"Folder","children":[
+                    {"name":"Foo","className":"ModuleScript","filePaths":["Source/Foo.luau"]}
+                ]}
+            ]}
+        ]}
+    ]})");
+
+    target("local value = project.A.B.Sour|ce", "Source");
+    CHECK(definition("local value = project.A.|B").empty());
+    CHECK(definition("local value = project.|A").empty());
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_skips_explicitly_mapped_children_regardless_of_order")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source/Foo.luau", "return {}\n");
+    tempDir.write_child("Other/External.luau", "return {}\n");
+    const std::string external = R"({"name":"External","className":"ModuleScript","filePaths":["Other/External.luau"]})";
+    const std::string foo = R"({"name":"Foo","className":"ModuleScript","filePaths":["Source/Foo.luau"]})";
+    // An explicitly mapped child lives elsewhere, so only the other child anchors Source.
+    for (const auto& children : {external + "," + foo, foo + "," + external})
+    {
+        CAPTURE(children);
+        loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+            {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+            {"name":"Source","className":"Folder","children":[)" +
+                      children + R"(]}
+        ]})");
+        target("local value = project.Sour|ce", "Source");
+    }
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_opens_omitted_entry_points_of_inferred_folders")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source/Foo.luau", "return {}\n");
+    tempDir.write_child("Source/init.luau", "return {}\n");
+    // The project keeps Source as a Folder and leaves its init file out of the sourcemap.
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Source","className":"Folder","children":[
+            {"name":"Foo","className":"ModuleScript","filePaths":["Source/Foo.luau"]}
+        ]}
+    ]})");
+
+    target("local value = project.Sour|ce", "Source/init.luau");
+}
+
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_anchors_folders_on_model_and_meta_files")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Assets/Model.model.json", "{}\n");
+    tempDir.write_child("Services/Storage/init.meta.json", "{}\n");
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Assets","className":"Folder","children":[
+            {"name":"Model","className":"Model","filePaths":["Assets/Model.model.json"]}
+        ]},
+        {"name":"Services","className":"Folder","children":[
+            {"name":"Storage","className":"Folder","filePaths":["Services/Storage/init.meta.json"]}
+        ]}
+    ]})");
+
+    target("local value = project.Ass|ets", "Assets");
+    target("local value = project.Services.Stor|age", "Services/Storage");
+    target("local value = project.Servi|ces", "Services");
+}
+
+// Creating symlinks needs extra privileges on Windows.
+#ifndef _WIN32
+TEST_CASE_FIXTURE(Fixture, "project_parent_walks_real_directories_of_symlinked_workspaces")
+{
+    // The workspace is opened through an alias that lives in a different folder from the
+    // repository, so the alias's parent isn't the repository's parent.
+    tempDir.touch_child("physical/Repo/.git");
+    tempDir.write_child("physical/Shared/Foo.luau", "return {}\n");
+    auto root = Uri::file(tempDir.path());
+    std::filesystem::create_directories(root.resolvePath("aliases").fsPath());
+    std::filesystem::create_directory_symlink(root.resolvePath("physical/Repo").fsPath(), root.resolvePath("aliases/Workspace").fsPath());
+
+    client->globalConfig.platform.type = LSPPlatformConfig::Lune;
+    WorkspaceFolder aliased(client.get(), "aliased", root.resolvePath("aliases/Workspace"), std::nullopt);
+    aliased.setupWithConfiguration(client->globalConfig);
+    aliased.isReady = true;
+
+    auto [source, position] = sourceWithMarker("local value = project.Parent.Shared.F|oo");
+    auto document = Luau::LanguageServer::newDocument(aliased, "main.luau", source);
+    lsp::DefinitionParams params;
+    params.textDocument = lsp::TextDocumentIdentifier{document};
+    params.position = position;
+    auto result = aliased.gotoDefinition(params, nullptr);
+    REQUIRE_EQ(result.size(), 1);
+    CHECK_EQ(result[0].uri, root.resolvePath("physical/Shared/Foo.luau"));
+}
+#endif
 
 TEST_SUITE_END();

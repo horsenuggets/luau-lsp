@@ -29,8 +29,11 @@ inline lsp::PositionEncodingKind& positionEncoding()
 struct InitializationOptions
 {
     std::unordered_map<std::string, std::string> fflags{};
+    /// Whether the client can reveal folders, through Go to Definition results that are
+    /// folders and document links to VS Code's "revealInExplorer" command
+    bool folderNavigation = false;
 };
-NLOHMANN_DEFINE_OPTIONAL(InitializationOptions, fflags)
+NLOHMANN_DEFINE_OPTIONAL(InitializationOptions, fflags, folderNavigation)
 
 class LanguageServer
 {

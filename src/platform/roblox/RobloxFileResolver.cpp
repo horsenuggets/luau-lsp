@@ -298,19 +298,95 @@ std::optional<Uri> RobloxPlatform::navigationSource(const Luau::ModuleInfo& targ
 
     // Some project sourcemaps retain a Folder and omit its init file. Reuse the existing
     // string-require entry-point and project-redirect resolver for those directories.
+    // Directories inferred from a Folder's children are checked as well, since they aren't
+    // indexed from project files.
+    auto entryPoint = [&](const Uri& directory) -> std::optional<Uri>
+    {
+        Luau::ModuleInfo context{fileResolver->getModuleName(directory.resolvePath("__navigation__.luau"))};
+        if (auto resolved = LSPPlatform::resolveStringRequire(&context, directory.fsPath(), limits))
+            if (auto source = resolveToRealPath(resolved->name); source && source->exists() && !source->isDirectory())
+                return source;
+        return std::nullopt;
+    };
     if (auto node = getSourceNodeFromVirtualPath(target.name))
     {
         for (const auto& [directory, sourceNode] : directoryToSourceNodes)
-        {
-            if (sourceNode != *node)
-                continue;
-            Luau::ModuleInfo context{fileResolver->getModuleName(directory.resolvePath("__navigation__.luau"))};
-            if (auto resolved = LSPPlatform::resolveStringRequire(&context, directory.fsPath(), limits))
-                if (auto source = resolveToRealPath(resolved->name); source && source->exists() && !source->isDirectory())
+            if (sourceNode == *node)
+                if (auto source = entryPoint(directory))
                     return source;
-        }
+        if (auto directory = navigationDirectory(target))
+            return entryPoint(*directory);
     }
     return std::nullopt;
+}
+
+// The folder a node's project file lives in. Project-backed nodes can map their scripts
+// elsewhere (e.g. a package's "src" folder), so this takes precedence over script paths.
+static std::optional<Uri> projectDirectory(const Uri& rootUri, const SourceNode* node)
+{
+    for (const auto& filePath : node->filePaths)
+        if (endsWith(filePath, ".project.json"))
+            return rootUri.resolvePath(filePath).parent();
+    return std::nullopt;
+}
+
+// Whether a file describes the folder it sits in rather than a sibling of it. Other names
+// starting with "init.", such as "init.spec.luau", are ordinary files inside the folder.
+static bool isInitFile(const Uri& path)
+{
+    static const std::unordered_set<std::string> kInitFileNames{
+        "init.lua", "init.luau", "init.server.lua", "init.server.luau", "init.client.lua", "init.client.luau", "init.meta.json"};
+    return kInitFileNames.count(path.filename()) > 0;
+}
+
+static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNode* node);
+
+// Where a node lives on disk, as the file or folder that its parent folder contains. Any of
+// its files can anchor it, including non-script ones like models and meta files.
+static std::optional<Uri> nodePath(const Uri& rootUri, const SourceNode* node)
+{
+    if (auto directory = projectDirectory(rootUri, node))
+        return directory;
+    auto filePath = node->getScriptFilePath();
+    if (!filePath && !node->filePaths.empty())
+        filePath = node->filePaths.front();
+    if (filePath)
+    {
+        auto path = rootUri.resolvePath(*filePath);
+        return isInitFile(path) ? path.parent() : path;
+    }
+    return inferNodeDirectory(rootUri, node);
+}
+
+// Folder nodes often carry no file paths in the sourcemap, so infer the folder from where
+// their children live on disk. Rojo names such folders after their directories, which rules
+// out virtual project containers whose children happen to share a parent directory, and
+// targets outside the workspace are never part of the project.
+static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNode* node)
+{
+    for (const auto* child : node->children)
+        if (auto path = nodePath(rootUri, child))
+            if (auto directory = path->parent(); directory && directory->isDirectory())
+                if (directory->filename() == node->name && rootUri.isAncestorOf(*directory))
+                    return directory;
+    return std::nullopt;
+}
+
+std::optional<Uri> RobloxPlatform::navigationDirectory(const Luau::ModuleInfo& target)
+{
+    auto node = getSourceNodeFromVirtualPath(target.name);
+    if (!node)
+        return LSPPlatform::navigationDirectory(target);
+    // The node's own project file comes first. A directory index can't be used here, since
+    // nested project files in the same folder leave it pointing at the innermost node.
+    if (auto directory = projectDirectory(fileResolver->rootUri, *node); directory && directory->isDirectory())
+        return directory;
+    // Folders with an init.meta.json name their directory directly.
+    for (const auto& filePath : (*node)->filePaths)
+        if (auto path = fileResolver->rootUri.resolvePath(filePath); isInitFile(path))
+            if (auto directory = path.parent(); directory && directory->isDirectory())
+                return directory;
+    return inferNodeDirectory(fileResolver->rootUri, *node);
 }
 
 std::optional<Uri> RobloxPlatform::resolveDirectoryRedirect(const Uri& directory) const
