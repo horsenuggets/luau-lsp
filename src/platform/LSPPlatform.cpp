@@ -314,8 +314,10 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveNavigationModule(
                 std::error_code error;
                 auto canonical = std::filesystem::weakly_canonical(directory->fsPath(), error);
                 if (!error)
+                    // The root stays canonical so that Parent walks the real directories. Only
+                    // final targets are mapped onto the workspace's spelling.
                     if (auto root = findGitRoot(Uri::file(canonical.generic_string())))
-                        return Luau::ModuleInfo{fileResolver->getModuleName(toWorkspacePath(fileResolver->rootUri, *root))};
+                        return Luau::ModuleInfo{fileResolver->getModuleName(*root)};
             }
         }
         return std::nullopt;
@@ -421,6 +423,8 @@ std::optional<Luau::ModuleInfo> LSPPlatform::resolveExpressionToModule(
 std::optional<Uri> LSPPlatform::resolveExpressionToSource(
     const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
 {
+    // Navigation can walk symlink-resolved paths, so targets inside the workspace are mapped
+    // back onto the spelling that the editor opened.
     if (auto target = resolveExpressionToModule(from, expression, limits))
         if (auto source = navigationSource(*target, limits))
             return toWorkspacePath(fileResolver->rootUri, *source);
@@ -433,8 +437,6 @@ std::optional<Uri> LSPPlatform::resolveExpressionToDirectory(
     auto target = resolveExpressionToModule(from, expression, limits);
     if (!target || navigationSource(*target, limits))
         return std::nullopt;
-    // The project root can resolve outside the workspace's spelling when the workspace is
-    // nested inside the repository, so final targets are mapped as well.
     if (auto directory = navigationDirectory(*target))
         return toWorkspacePath(fileResolver->rootUri, *directory);
     return std::nullopt;

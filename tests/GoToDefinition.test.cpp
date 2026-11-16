@@ -1208,4 +1208,56 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "standard_platform_does_not_enable_
     CHECK(definition("local value = project.Ch|ild").empty());
 }
 
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_locates_sourcemap_folders_by_their_own_files")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Package/src/Foo.luau", "return {}\n");
+    tempDir.write_child("Specs/init.spec.luau", "return {}\n");
+    // Outer and Inner both have project files in "Package", and "init.spec" is an ordinary
+    // script rather than its folder's entry point.
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Outer","className":"Folder","filePaths":["Package/dev.project.json"],"children":[
+            {"name":"Inner","className":"Folder","filePaths":["Package/default.project.json"],"children":[
+                {"name":"Foo","className":"ModuleScript","filePaths":["Package/src/Foo.luau"]}
+            ]}
+        ]},
+        {"name":"Specs","className":"Folder","children":[
+            {"name":"init.spec","className":"ModuleScript","filePaths":["Specs/init.spec.luau"]}
+        ]}
+    ]})");
+
+    target("local value = project.Out|er", "Package");
+    target("local value = project.Spe|cs", "Specs");
+}
+
+// Creating symlinks needs extra privileges on Windows.
+#ifndef _WIN32
+TEST_CASE_FIXTURE(Fixture, "project_parent_walks_real_directories_of_symlinked_workspaces")
+{
+    // The workspace is opened through an alias that lives in a different folder from the
+    // repository, so the alias's parent isn't the repository's parent.
+    tempDir.touch_child("physical/Repo/.git");
+    tempDir.write_child("physical/Shared/Foo.luau", "return {}\n");
+    auto root = Uri::file(tempDir.path());
+    std::filesystem::create_directories(root.resolvePath("aliases").fsPath());
+    std::filesystem::create_directory_symlink(root.resolvePath("physical/Repo").fsPath(), root.resolvePath("aliases/Workspace").fsPath());
+
+    client->globalConfig.platform.type = LSPPlatformConfig::Lune;
+    WorkspaceFolder aliased(client.get(), "aliased", root.resolvePath("aliases/Workspace"), std::nullopt);
+    aliased.setupWithConfiguration(client->globalConfig);
+    aliased.isReady = true;
+
+    auto [source, position] = sourceWithMarker("local value = project.Parent.Shared.F|oo");
+    auto document = Luau::LanguageServer::newDocument(aliased, "main.luau", source);
+    lsp::DefinitionParams params;
+    params.textDocument = lsp::TextDocumentIdentifier{document};
+    params.position = position;
+    auto result = aliased.gotoDefinition(params, nullptr);
+    REQUIRE_EQ(result.size(), 1);
+    CHECK_EQ(result[0].uri, root.resolvePath("physical/Shared/Foo.luau"));
+}
+#endif
+
 TEST_SUITE_END();

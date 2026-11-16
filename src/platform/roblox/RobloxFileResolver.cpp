@@ -323,6 +323,15 @@ static std::optional<Uri> projectDirectory(const Uri& rootUri, const SourceNode*
     return std::nullopt;
 }
 
+// Whether a script is its folder's entry point. Other names starting with "init.", such as
+// "init.spec.luau", are ordinary scripts inside the folder.
+static bool isInitScript(const Uri& path)
+{
+    static const std::unordered_set<std::string> kInitScriptNames{
+        "init.lua", "init.luau", "init.server.lua", "init.server.luau", "init.client.lua", "init.client.luau"};
+    return kInitScriptNames.count(path.filename()) > 0;
+}
+
 static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNode* node);
 
 // Where a node lives on disk, as the file or folder that its parent folder contains.
@@ -333,7 +342,7 @@ static std::optional<Uri> nodePath(const Uri& rootUri, const SourceNode* node)
     if (auto scriptPath = node->getScriptFilePath())
     {
         auto path = rootUri.resolvePath(*scriptPath);
-        return isInitLuauFile(path) ? path.parent() : path;
+        return isInitScript(path) ? path.parent() : path;
     }
     return inferNodeDirectory(rootUri, node);
 }
@@ -354,9 +363,10 @@ std::optional<Uri> RobloxPlatform::navigationDirectory(const Luau::ModuleInfo& t
     auto node = getSourceNodeFromVirtualPath(target.name);
     if (!node)
         return LSPPlatform::navigationDirectory(target);
-    for (const auto& [directory, sourceNode] : directoryToSourceNodes)
-        if (sourceNode == *node && directory.isDirectory())
-            return directory;
+    // The node's own project file comes first. A directory index can't be used here, since
+    // nested project files in the same folder leave it pointing at the innermost node.
+    if (auto directory = projectDirectory(fileResolver->rootUri, *node); directory && directory->isDirectory())
+        return directory;
     return inferNodeDirectory(fileResolver->rootUri, *node);
 }
 
