@@ -188,6 +188,10 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
 
         if (segment == "..")
         {
+            // A nested game has no parent, as in Roblox, so a relative path can't climb out into the project
+            if (base == "game" && !nestedDataModelPath.empty())
+                return std::nullopt;
+
             auto parent = getParentPath(base);
             if (!parent)
                 return std::nullopt;
@@ -195,11 +199,10 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
         }
         else
         {
-            base += '/';
-            base += segment;
+            // Entering a nested DataModel from the project continues in the game's subtree
+            base = canonicalizeVirtualPath(base + '/' + segment);
         }
     }
-    base = canonicalizeVirtualPath(base);
 
     // Project files can hide filesystem entry points behind sourcemapped Folders.
     // Keep mapped scripts authoritative, and only fall back to files that exist.

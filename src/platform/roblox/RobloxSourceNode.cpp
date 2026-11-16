@@ -232,7 +232,8 @@ ordered_json SourceNode::toJson() const
         ordered_json children_array = ordered_json::array();
         for (const auto* child : children)
         {
-            if (!child->containsFilePaths())
+            // Keep a nested DataModel even without files, since plugin information can only attach to the game
+            if (!child->containsFilePaths() && child->className != "DataModel")
             {
                 continue;
             }

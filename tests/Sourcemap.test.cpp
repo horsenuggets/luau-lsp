@@ -2333,6 +2333,53 @@ TEST_CASE_FIXTURE(Fixture, "relative_string_require_from_the_project_enters_a_ne
     CHECK(Luau::toString(requireType(getModule(moduleName), "value")) == "number");
 }
 
+TEST_CASE_FIXTURE(Fixture, "relative_string_requires_treat_a_nested_data_model_as_a_root")
+{
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+    auto platform = workspace.fileResolver.platform;
+
+    auto resolve = [&](const std::string& from, const std::string& require) -> std::optional<std::string>
+    {
+        Luau::ModuleInfo context{from};
+        if (auto result = platform->resolveStringRequire(&context, require, workspace.limits))
+            return result->name;
+        return std::nullopt;
+    };
+
+    // Entering the game mid-path continues in its subtree, however the segments reach it
+    CHECK_EQ(resolve("ProjectRoot/Source/Runner", "./DataModel/ReplicatedStorage/Shared"), "game/ReplicatedStorage/Shared");
+    CHECK_EQ(resolve("ProjectRoot/Source/Runner", "./DataModel/ReplicatedStorage/../ReplicatedStorage/Shared"), "game/ReplicatedStorage/Shared");
+
+    // The game has no parent, so neither side can climb out of it into the project
+    CHECK_FALSE(resolve("game/ReplicatedStorage/Shared", "../../Tests"));
+    CHECK_FALSE(resolve("ProjectRoot/Source/Runner", "./DataModel/../Tests"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "sourcemap_json_keeps_a_nested_data_model_without_files")
+{
+    loadSourcemap(R"(
+        {
+            "name": "my-game-dev",
+            "className": "Folder",
+            "children": [
+                {"name": "DataModel", "className": "DataModel"},
+                {"name": "Tests", "className": "Folder", "children": [{"name": "Runner", "className": "ModuleScript", "filePaths": ["Tests/Runner.luau"]}]}
+            ]
+        }
+    )");
+
+    auto platform = dynamic_cast<RobloxPlatform*>(workspace.platform.get());
+    auto json = platform->rootSourceNode->toJson();
+
+    REQUIRE(json.contains("children"));
+    auto children = json["children"];
+    CHECK(std::any_of(children.begin(), children.end(),
+        [](const auto& child)
+        {
+            return child["className"] == "DataModel";
+        }));
+}
+
 TEST_CASE_FIXTURE(Fixture, "project_reaches_past_a_nested_data_model_from_the_same_directory")
 {
     client->globalConfig.diagnostics.strictDatamodelTypes = true;
