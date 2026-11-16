@@ -693,7 +693,7 @@ lsp::InitializeResult LanguageServer::onInitialize(const lsp::InitializeParams& 
         try
         {
             InitializationOptions options = params.initializationOptions.value();
-            client->folderDefinitions = options.folderDefinitions;
+            client->folderNavigation = options.folderNavigation;
             if (!options.fflags.empty())
             {
                 registerFastFlags(

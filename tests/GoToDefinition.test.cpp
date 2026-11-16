@@ -1171,7 +1171,7 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_rejects_nonreferen
     // An ordinary directory has no source, so the folder itself is returned to clients that
     // can show it.
     CHECK(definition("local value = project.Emp|ty").empty());
-    client->folderDefinitions = true;
+    client->folderNavigation = true;
     target("local value = project.Emp|ty", "Empty");
 }
 

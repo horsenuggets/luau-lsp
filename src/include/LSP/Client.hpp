@@ -23,9 +23,9 @@ struct Client
     virtual ~Client() = default;
 
     lsp::ClientCapabilities capabilities;
-    /// Whether Go to Definition may return folders. Editors open definition results as
-    /// files, so this is only enabled for clients that opt in to handling folders.
-    bool folderDefinitions = false;
+    /// Whether navigation may target folders. Editors open definition results as files, and
+    /// folder links use a VS Code command, so this is only enabled for clients that opt in.
+    bool folderNavigation = false;
     /// A registered definitions file passed by the client
     std::unordered_map<std::string, std::string> definitionsFiles{};
     /// Definitions provided as in-memory source (package name, contents), loaded before definitionsFiles

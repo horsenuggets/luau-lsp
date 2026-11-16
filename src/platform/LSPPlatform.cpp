@@ -422,7 +422,8 @@ std::optional<Uri> LSPPlatform::resolveExpressionToSource(
     const Luau::ModuleName& from, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
 {
     if (auto target = resolveExpressionToModule(from, expression, limits))
-        return navigationSource(*target, limits);
+        if (auto source = navigationSource(*target, limits))
+            return toWorkspacePath(fileResolver->rootUri, *source);
     return std::nullopt;
 }
 
@@ -432,7 +433,11 @@ std::optional<Uri> LSPPlatform::resolveExpressionToDirectory(
     auto target = resolveExpressionToModule(from, expression, limits);
     if (!target || navigationSource(*target, limits))
         return std::nullopt;
-    return navigationDirectory(*target);
+    // The project root can resolve outside the workspace's spelling when the workspace is
+    // nested inside the repository, so final targets are mapped as well.
+    if (auto directory = navigationDirectory(*target))
+        return toWorkspacePath(fileResolver->rootUri, *directory);
+    return std::nullopt;
 }
 
 std::optional<Luau::AutocompleteEntryMap> LSPPlatform::completionCallback(

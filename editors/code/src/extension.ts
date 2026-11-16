@@ -530,8 +530,9 @@ const startLanguageServer = async (context: vscode.ExtensionContext) => {
     },
     initializationOptions: {
       fflags,
-      // The definition middleware below reveals folders in the Explorer.
-      folderDefinitions: true,
+      // The definition middleware below and VS Code's revealInExplorer command, which folder
+      // document links use, reveal folders in the Explorer.
+      folderNavigation: true,
     },
     markdown: {
       supportHtml: true,

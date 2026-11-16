@@ -135,7 +135,7 @@ lsp::DefinitionResult WorkspaceFolder::gotoDefinition(const lsp::DefinitionParam
         if (auto uri = platform->resolveExpressionToSource(moduleName, expression, limits))
             return {lsp::Location{*uri, lsp::Range{{0, 0}, {0, 0}}}};
         // Folders have no source to open, so only clients that know how to show them get one.
-        if (client->folderDefinitions)
+        if (client->folderNavigation)
             if (auto directory = platform->resolveExpressionToDirectory(moduleName, expression, limits))
                 return {lsp::Location{*directory, lsp::Range{{0, 0}, {0, 0}}}};
     }

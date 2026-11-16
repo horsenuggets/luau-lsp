@@ -51,6 +51,12 @@ namespace
 {
 struct NavigationLinkFixture : Fixture
 {
+    // Behaves like the VS Code extension, which opts in to folder navigation.
+    NavigationLinkFixture()
+    {
+        client->folderNavigation = true;
+    }
+
     void open(const std::string& source)
     {
         auto document = workspace.rootUri.resolvePath("main.luau");
@@ -160,6 +166,37 @@ TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_split_instance_requir
     CHECK_EQ(links("local Foo = require(\"./Source/Foo\")"), "\"./Source/Foo\" -> Source/Foo.luau");
 }
 
+TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_keep_whole_argument_links_for_bare_roots")
+{
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source/init.luau", "return {}\n");
+    loadSourcemap(R"({"name":"Package","className":"ModuleScript","filePaths":["default.project.json","Source/init.luau"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]}
+    ]})");
+
+    // Bare roots have no segments to link instead, so the require keeps its own link.
+    CHECK_EQ(links("local Root = require(project)"), "project -> Source/init.luau");
+    CHECK_EQ(links("local Root = require((project))"), "(project) -> Source/init.luau");
+}
+
+TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_use_project_directories_of_packages")
+{
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source/Package/src/Foo.luau", "return {}\n");
+    tempDir.write_child("Source/Package/default.project.json", R"({"tree":{"$path":"src"}})");
+    // The package maps its scripts into "src", so only its project file shows where it lives.
+    loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+        {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+        {"name":"Source","className":"Folder","children":[
+            {"name":"Package","className":"Folder","filePaths":["Source/Package/default.project.json"],"children":[
+                {"name":"Foo","className":"ModuleScript","filePaths":["Source/Package/src/Foo.luau"]}
+            ]}
+        ]}
+    ]})");
+
+    CHECK_EQ(links("local value = project.Source"), "Source -> Source/");
+}
+
 TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_reveal_sourcemap_folders")
 {
     tempDir.touch_child(".git");
@@ -184,7 +221,7 @@ TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_reveal_sourcemap_fold
     CHECK_EQ(links("local value = project.Empty"), "");
 }
 
-TEST_CASE_FIXTURE(NavigationLinkFixture, "folder_definitions_require_client_opt_in_and_ignore_links")
+TEST_CASE_FIXTURE(NavigationLinkFixture, "folder_navigation_requires_client_opt_in")
 {
     lune();
     tempDir.touch_child(".git");
@@ -192,30 +229,34 @@ TEST_CASE_FIXTURE(NavigationLinkFixture, "folder_definitions_require_client_opt_
     tempDir.write_child("Package/init.luau", "return {}\n");
 
     client->configStore.emplace(workspace.rootUri, client->globalConfig);
-    for (bool folderDefinitions : {false, true})
+    for (bool folderNavigation : {false, true})
     {
         for (bool enabled : {true, false})
         {
-            CAPTURE(folderDefinitions);
+            CAPTURE(folderNavigation);
             CAPTURE(enabled);
-            client->folderDefinitions = folderDefinitions;
+            client->folderNavigation = folderNavigation;
             client->configStore.at(workspace.rootUri).documentLinks.enabled = enabled;
-            // Other clients would open a folder as a file, so they never receive one.
-            CHECK_EQ(definition("local value = project.Sou|rce.Foo"), folderDefinitions ? "Source/" : "");
+            // Other clients would open a folder as a file and can't run VS Code commands, so
+            // they never receive folders. Files are unaffected.
+            CHECK_EQ(definition("local value = project.Sou|rce.Foo"), folderNavigation ? "Source/" : "");
             CHECK_EQ(definition("local value = project.Source.F|oo"), "Source/Foo.luau");
             CHECK_EQ(definition("local value = project.Pack|age"), "Package/init.luau");
-            CHECK_EQ(links("local value = project.Source"), enabled ? "Source -> Source/" : "");
+            std::string expected = enabled ? (folderNavigation ? "Foo -> Source/Foo.luau, Source -> Source/" : "Foo -> Source/Foo.luau") : "";
+            CHECK_EQ(links("local value = project.Source.Foo"), expected);
         }
     }
 }
 
-TEST_CASE("initialization_options_opt_in_to_folder_definitions")
+TEST_CASE("initialization_options_opt_in_to_folder_navigation")
 {
-    CHECK_FALSE(json::object().get<InitializationOptions>().folderDefinitions);
-    CHECK(json{{"folderDefinitions", true}}.get<InitializationOptions>().folderDefinitions);
-    CHECK_FALSE(json{{"fflags", json::object()}}.get<InitializationOptions>().folderDefinitions);
+    CHECK_FALSE(json::object().get<InitializationOptions>().folderNavigation);
+    CHECK(json{{"folderNavigation", true}}.get<InitializationOptions>().folderNavigation);
+    CHECK_FALSE(json{{"fflags", json::object()}}.get<InitializationOptions>().folderNavigation);
 }
 
+// Creating symlinks needs extra privileges on Windows.
+#ifndef _WIN32
 TEST_CASE_FIXTURE(Fixture, "workspace_path_preserves_symlinked_workspace_spelling")
 {
     tempDir.write_child("Real/Source/Foo.luau", "return {}\n");
@@ -231,3 +272,35 @@ TEST_CASE_FIXTURE(Fixture, "workspace_path_preserves_symlinked_workspace_spellin
     CHECK_EQ(toWorkspacePath(linked, root.resolvePath("Other")), root.resolvePath("Other"));
     CHECK_EQ(toWorkspacePath(real, real.resolvePath("Source")), real.resolvePath("Source"));
 }
+
+TEST_CASE_FIXTURE(Fixture, "navigation_targets_keep_the_spelling_of_nested_symlinked_workspaces")
+{
+    // The workspace is a folder inside the repository, opened through a symlink, so the
+    // repository root itself is outside the workspace's spelling.
+    tempDir.touch_child("Real/.git");
+    tempDir.write_child("Real/Sub/Source/Foo.luau", "return {}\n");
+    auto root = Uri::file(tempDir.path());
+    std::filesystem::create_directory_symlink(root.resolvePath("Real").fsPath(), root.resolvePath("Linked").fsPath());
+    auto nestedRoot = root.resolvePath("Linked/Sub");
+
+    client->folderNavigation = true;
+    client->globalConfig.platform.type = LSPPlatformConfig::Lune;
+    WorkspaceFolder nested(client.get(), "nested", nestedRoot, std::nullopt);
+    nested.setupWithConfiguration(client->globalConfig);
+    nested.isReady = true;
+
+    auto definition = [&](const std::string& markedSource)
+    {
+        auto [source, position] = sourceWithMarker(markedSource);
+        auto document = Luau::LanguageServer::newDocument(nested, "main.luau", source);
+        lsp::DefinitionParams params;
+        params.textDocument = lsp::TextDocumentIdentifier{document};
+        params.position = position;
+        auto result = nested.gotoDefinition(params, nullptr);
+        REQUIRE_EQ(result.size(), 1);
+        return result[0].uri;
+    };
+    CHECK_EQ(definition("local value = project.Sub.Source.F|oo"), nestedRoot.resolvePath("Source/Foo.luau"));
+    CHECK_EQ(definition("local value = project.Sub.Sou|rce"), nestedRoot.resolvePath("Source"));
+}
+#endif

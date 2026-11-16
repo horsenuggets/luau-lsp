@@ -313,24 +313,39 @@ std::optional<Uri> RobloxPlatform::navigationSource(const Luau::ModuleInfo& targ
     return std::nullopt;
 }
 
+// The folder a node's project file lives in. Project-backed nodes can map their scripts
+// elsewhere (e.g. a package's "src" folder), so this takes precedence over script paths.
+static std::optional<Uri> projectDirectory(const Uri& rootUri, const SourceNode* node)
+{
+    for (const auto& filePath : node->filePaths)
+        if (endsWith(filePath, ".project.json"))
+            return rootUri.resolvePath(filePath).parent();
+    return std::nullopt;
+}
+
+static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNode* node);
+
+// Where a node lives on disk, as the file or folder that its parent folder contains.
+static std::optional<Uri> nodePath(const Uri& rootUri, const SourceNode* node)
+{
+    if (auto directory = projectDirectory(rootUri, node))
+        return directory;
+    if (auto scriptPath = node->getScriptFilePath())
+    {
+        auto path = rootUri.resolvePath(*scriptPath);
+        return isInitLuauFile(path) ? path.parent() : path;
+    }
+    return inferNodeDirectory(rootUri, node);
+}
+
 // Folder nodes carry no file paths in the sourcemap, so infer the folder from where its
-// descendant scripts live on disk.
+// children live on disk.
 static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNode* node)
 {
     for (const auto* child : node->children)
-    {
-        std::optional<Uri> childPath;
-        if (auto scriptPath = child->getScriptFilePath())
-        {
-            auto path = rootUri.resolvePath(*scriptPath);
-            childPath = isInitLuauFile(path) ? path.parent() : path;
-        }
-        else
-            childPath = inferNodeDirectory(rootUri, child);
-        if (childPath)
-            if (auto directory = childPath->parent(); directory && directory->isDirectory())
+        if (auto path = nodePath(rootUri, child))
+            if (auto directory = path->parent(); directory && directory->isDirectory())
                 return directory;
-    }
     return std::nullopt;
 }
 

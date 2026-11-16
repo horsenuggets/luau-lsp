@@ -31,31 +31,28 @@ struct FindRequireVisitor : public Luau::AstVisitor
     }
 };
 
-// Collects each child segment of an instance reference, matching the segments that Go to
-// Definition navigates from. Bare roots like "script" and "project" are skipped, since they
-// appear so often that underlining every use would be noise.
+// Returns where to link a child segment of an instance reference, matching the segments
+// that Go to Definition navigates from. Bare roots like "script" and "project" aren't
+// segments, since they appear so often that underlining every use would be noise.
+static std::optional<Luau::Location> segmentLocation(Luau::AstExpr* expression)
+{
+    if (auto index = expression->as<Luau::AstExprIndexName>(); index && index->op == '.')
+        return index->indexLocation;
+    if (auto index = expression->as<Luau::AstExprIndexExpr>(); index && index->index->is<Luau::AstExprConstantString>())
+        return index->index->location;
+    if (auto call = expression->as<Luau::AstExprCall>(); call && call->self && call->args.size >= 1 && call->args.data[0]->is<Luau::AstExprConstantString>())
+        return call->args.data[0]->location;
+    return std::nullopt;
+}
+
 struct FindNavigationVisitor : public Luau::AstVisitor
 {
     std::vector<std::pair<Luau::AstExpr*, Luau::Location>> segments{};
 
-    bool visit(Luau::AstExprIndexName* index) override
+    bool visit(Luau::AstExpr* expression) override
     {
-        if (index->op == '.')
-            segments.emplace_back(index, index->indexLocation);
-        return true;
-    }
-
-    bool visit(Luau::AstExprIndexExpr* index) override
-    {
-        if (index->index->is<Luau::AstExprConstantString>())
-            segments.emplace_back(index, index->index->location);
-        return true;
-    }
-
-    bool visit(Luau::AstExprCall* call) override
-    {
-        if (call->self && call->args.size >= 1 && call->args.data[0]->is<Luau::AstExprConstantString>())
-            segments.emplace_back(call, call->args.data[0]->location);
+        if (auto location = segmentLocation(expression))
+            segments.emplace_back(expression, *location);
         return true;
     }
 };
@@ -89,8 +86,12 @@ std::vector<lsp::DocumentLink> WorkspaceFolder::documentLink(const lsp::Document
     for (auto& require : visitor.requireInfos)
     {
         // Instance paths like require(script.Child) get a link per segment below, which
-        // would overlap a link over the whole argument.
-        if (platform->resolveExpressionToSource(moduleName, require.require, limits))
+        // would overlap a link over the whole argument. Bare roots like require(project)
+        // have no segments, so they keep the whole-argument link.
+        auto argument = require.require;
+        while (auto group = argument->as<Luau::AstExprGroup>())
+            argument = group->expr;
+        if (segmentLocation(argument) && platform->resolveExpressionToSource(moduleName, argument, limits))
             continue;
         if (auto moduleInfo = frontend.moduleResolver.resolveModuleInfo(moduleName, *require.require))
         {
@@ -107,7 +108,7 @@ std::vector<lsp::DocumentLink> WorkspaceFolder::documentLink(const lsp::Document
     }
 
     // Every navigable segment is linked, so all of them are underlined consistently. Files
-    // open directly, while folders are revealed in the explorer.
+    // open directly, while folders are revealed in the explorer for clients that support it.
     FindNavigationVisitor navigationVisitor;
     sourceModule->root->visit(&navigationVisitor);
     for (const auto& [expression, location] : navigationVisitor.segments)
@@ -116,7 +117,7 @@ std::vector<lsp::DocumentLink> WorkspaceFolder::documentLink(const lsp::Document
         link.range = {textDocument->convertPosition(location.begin), textDocument->convertPosition(location.end)};
         if (auto source = platform->resolveExpressionToSource(moduleName, expression, limits))
             link.target = *source;
-        else if (auto directory = platform->resolveExpressionToDirectory(moduleName, expression, limits))
+        else if (auto directory = client->folderNavigation ? platform->resolveExpressionToDirectory(moduleName, expression, limits) : std::nullopt)
         {
             link.target = revealInExplorerUri(*directory);
             link.tooltip = "Reveal in Explorer";
