@@ -29,8 +29,10 @@ inline lsp::PositionEncodingKind& positionEncoding()
 struct InitializationOptions
 {
     std::unordered_map<std::string, std::string> fflags{};
+    /// Whether the client handles Go to Definition results that are folders
+    bool folderDefinitions = false;
 };
-NLOHMANN_DEFINE_OPTIONAL(InitializationOptions, fflags)
+NLOHMANN_DEFINE_OPTIONAL(InitializationOptions, fflags, folderDefinitions)
 
 class LanguageServer
 {

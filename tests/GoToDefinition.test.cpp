@@ -1149,7 +1149,6 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_rejects_nonreferen
              "local value = project.Mis|sing",
              "local value = script.Missing.Par|ent",
              "local value = script.Missing.Parent.Ch|ild",
-             "local value = project.Emp|ty",
              "local value = project.Bo|th",
              "local value = project.Mix|ed",
              "local value = project.Doub|le",
@@ -1169,6 +1168,11 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_navigation_rejects_nonreferen
         CAPTURE(source);
         CHECK(definition(source).empty());
     }
+    // An ordinary directory has no source, so the folder itself is returned to clients that
+    // can show it.
+    CHECK(definition("local value = project.Emp|ty").empty());
+    client->folderDefinitions = true;
+    target("local value = project.Emp|ty", "Empty");
 }
 
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "lune_project_navigation_requires_a_git_root")

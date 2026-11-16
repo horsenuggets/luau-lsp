@@ -313,6 +313,38 @@ std::optional<Uri> RobloxPlatform::navigationSource(const Luau::ModuleInfo& targ
     return std::nullopt;
 }
 
+// Folder nodes carry no file paths in the sourcemap, so infer the folder from where its
+// descendant scripts live on disk.
+static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNode* node)
+{
+    for (const auto* child : node->children)
+    {
+        std::optional<Uri> childPath;
+        if (auto scriptPath = child->getScriptFilePath())
+        {
+            auto path = rootUri.resolvePath(*scriptPath);
+            childPath = isInitLuauFile(path) ? path.parent() : path;
+        }
+        else
+            childPath = inferNodeDirectory(rootUri, child);
+        if (childPath)
+            if (auto directory = childPath->parent(); directory && directory->isDirectory())
+                return directory;
+    }
+    return std::nullopt;
+}
+
+std::optional<Uri> RobloxPlatform::navigationDirectory(const Luau::ModuleInfo& target)
+{
+    auto node = getSourceNodeFromVirtualPath(target.name);
+    if (!node)
+        return LSPPlatform::navigationDirectory(target);
+    for (const auto& [directory, sourceNode] : directoryToSourceNodes)
+        if (sourceNode == *node && directory.isDirectory())
+            return directory;
+    return inferNodeDirectory(fileResolver->rootUri, *node);
+}
+
 std::optional<Uri> RobloxPlatform::resolveDirectoryRedirect(const Uri& directory) const
 {
     if (directory.resolvePath("init.luau").exists() || directory.resolvePath("init.lua").exists())
