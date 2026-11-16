@@ -237,8 +237,22 @@ bool MagicFindFirstAncestor::infer(const Luau::MagicFunctionCallContext& context
     return false;
 }
 
-// Retrieves the corresponding Luau type for a Sourcemap node
-// If it does not yet exist, the type is produced
+static bool hasDeclaredProperty(Luau::TypeId type, const std::string& name)
+{
+    while (auto instance = Luau::get<Luau::ExternType>(Luau::follow(type)))
+    {
+        auto property = instance->props.find(name);
+        if (property != instance->props.end() && !Luau::hasTag(property->second, kSourcemapGeneratedTag))
+            return true;
+        if (!instance->parent)
+            break;
+        type = *instance->parent;
+    }
+    return false;
+}
+
+// Retrieves the corresponding Luau type for a Sourcemap node.
+// If it does not yet exist, the type is produced.
 static Luau::TypeId getSourcemapType(const Luau::GlobalTypes& globals, Luau::TypeArena& arena, const SourceNode* node)
 {
     // Gets the type corresponding to the sourcemap node if it exists
@@ -302,8 +316,11 @@ static Luau::TypeId getSourcemapType(const Luau::GlobalTypes& globals, Luau::Typ
                         ctv->props["Parent"] = Luau::makeProperty(getSourcemapType(globals, arena, node->parent));
                 }
 
-                // Add children as properties
+                // Add children without replacing real API properties.
                 for (const auto& child : node->children)
+                {
+                    if (hasDeclaredProperty(typeId, child->name))
+                        continue;
                     ctv->props[child->name] = Luau::Property{
                         getSourcemapType(globals, arena, child),
                         /* deprecated */ false,
@@ -312,6 +329,7 @@ static Luau::TypeId getSourcemapType(const Luau::GlobalTypes& globals, Luau::Typ
                         /* tags */ {kSourcemapGeneratedTag},
                         /* documentationSymbol*/ std::nullopt,
                     };
+                }
 
                 // Add FindFirstAncestor and FindFirstChild
                 if (auto instanceType = getTypeIdForClass(globals.globalScope, "Instance"))
@@ -342,6 +360,8 @@ void addChildrenToCTV(const Luau::GlobalTypes& globals, Luau::TypeArena& arena, 
         // Extend the props to include the children
         for (const auto& child : node->children)
         {
+            if (hasDeclaredProperty(ty, child->name))
+                continue;
             ctv->props[child->name] = Luau::Property{
                 getSourcemapType(globals, arena, child),
                 /* deprecated */ false,
@@ -390,7 +410,7 @@ void RobloxPlatform::clearSourcemapTypes()
         sourceNode->setInvalidModuleDependency(true, /* forAutocomplete= */ false);
         sourceNode->setInvalidModuleDependency(true, /* forAutocomplete= */ true);
     }
-    instanceTypes.clear();             // NOTE: used across BOTH instances of handleSourcemapUpdate, don't clear in between!
+    instanceTypes.clear(); // NOTE: used across BOTH instances of handleSourcemapUpdate, don't clear in between!
     clearSourcemapGeneratedTypes(workspaceFolder->frontend.globals);
     if (!FFlag::LuauSolverV2)
         clearSourcemapGeneratedTypes(workspaceFolder->frontend.globalsForAutocomplete);

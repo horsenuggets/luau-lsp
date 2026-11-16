@@ -188,4 +188,55 @@ TEST_CASE_FIXTURE(Fixture, "type_functions_in_definition_files_work")
     REQUIRE(result.errors.empty());
 }
 
+TEST_CASE("lune_script_definitions_are_workspace_local")
+{
+    TestClient client;
+    auto rootUri = Uri::file(*Luau::FileUtils::getCurrentWorkingDirectory());
+    auto luneWorkspace = WorkspaceFolder(&client, "$LUNE_WORKSPACE", rootUri, std::nullopt);
+    auto config = defaultTestClientConfiguration();
+    config.platform.type = LSPPlatformConfig::Lune;
+    luneWorkspace.setupWithConfiguration(config);
+    luneWorkspace.isReady = true;
+
+    CHECK(client.builtinDefinitions.empty());
+
+    auto document = newDocument(luneWorkspace, "lune.luau", R"(
+        --!strict
+        local scriptPath: string = script:GetFullName()
+        local projectPath: string = project:GetFullName()
+        local scriptName: string = script.Name
+        local projectName: string = project.Name
+    )");
+    auto result = luneWorkspace.frontend.check(luneWorkspace.fileResolver.getModuleName(document));
+    REQUIRE(result.errors.empty());
+
+    auto invalidDocument = newDocument(luneWorkspace, "invalid.luau", R"(
+        --!strict
+        local path: number = script:GetFullName()
+    )");
+    auto invalidResult = luneWorkspace.frontend.check(luneWorkspace.fileResolver.getModuleName(invalidDocument));
+    REQUIRE_EQ(invalidResult.errors.size(), 1);
+    CHECK(Luau::get<Luau::TypeMismatch>(invalidResult.errors[0]));
+
+    auto standardWorkspace = WorkspaceFolder(&client, "$STANDARD_WORKSPACE", rootUri, std::nullopt);
+    config.platform.type = LSPPlatformConfig::Standard;
+    standardWorkspace.setupWithConfiguration(config);
+    standardWorkspace.isReady = true;
+
+    auto standardDocument = newDocument(standardWorkspace, "standard.luau", R"(
+        --!strict
+        local scriptReference = script
+        local projectReference = project
+    )");
+    auto standardResult = standardWorkspace.frontend.check(standardWorkspace.fileResolver.getModuleName(standardDocument));
+    REQUIRE_EQ(standardResult.errors.size(), 2);
+    for (const auto& error : standardResult.errors)
+    {
+        auto unknown = Luau::get<Luau::UnknownSymbol>(error);
+        REQUIRE(unknown);
+        CHECK((unknown->name == "script" || unknown->name == "project"));
+        CHECK_EQ(unknown->context, Luau::UnknownSymbol::Context::Binding);
+    }
+}
+
 TEST_SUITE_END();

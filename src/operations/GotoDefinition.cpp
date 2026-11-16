@@ -74,6 +74,40 @@ static std::vector<LocationInformation> findLocationsForExpr(const Luau::ModuleP
     return {};
 }
 
+static bool isLocalRootedRequireArgument(Luau::AstExpr* expression)
+{
+    while (true)
+    {
+        if (auto group = expression->as<Luau::AstExprGroup>())
+            expression = group->expr;
+        else if (auto index = expression->as<Luau::AstExprIndexName>())
+            expression = index->expr;
+        else if (auto index = expression->as<Luau::AstExprIndexExpr>())
+            expression = index->expr;
+        else if (auto call = expression->as<Luau::AstExprCall>(); call && call->self)
+            expression = call->func;
+        else
+            return expression->is<Luau::AstExprLocal>();
+    }
+}
+
+static Luau::AstExpr* navigationExpressionAtPosition(const Luau::SourceModule& sourceModule, Luau::Position position)
+{
+    auto ancestry = Luau::findAstAncestryOfPosition(sourceModule, position);
+    for (auto it = ancestry.rbegin(); it != ancestry.rend(); ++it)
+    {
+        if (auto index = (*it)->as<Luau::AstExprIndexName>(); index && index->op == '.' && index->indexLocation.contains(position))
+            return index;
+        if (auto index = (*it)->as<Luau::AstExprIndexExpr>(); index && index->index->location.contains(position))
+            return index;
+        if (auto global = (*it)->as<Luau::AstExprGlobal>())
+            return global;
+        if (auto call = (*it)->as<Luau::AstExprCall>(); call && call->self && call->args.size >= 1 && call->args.data[0]->location.contains(position))
+            return call;
+    }
+    return nullptr;
+}
+
 lsp::DefinitionResult WorkspaceFolder::gotoDefinition(const lsp::DefinitionParams& params, const LSPCancellationToken& cancellationToken)
 {
     lsp::DefinitionResult result{};
@@ -93,6 +127,14 @@ lsp::DefinitionResult WorkspaceFolder::gotoDefinition(const lsp::DefinitionParam
     auto module = getModule(moduleName, /* forAutocomplete: */ true);
     if (!sourceModule || !module)
         return result;
+
+    // Resolve the clicked segment before the global-binding early return. Locals are not
+    // followed by the platform resolver, so normal declaration navigation is preserved.
+    if (auto expression = navigationExpressionAtPosition(*sourceModule, position))
+    {
+        if (auto uri = platform->resolveExpressionToSource(moduleName, expression, limits))
+            return {lsp::Location{*uri, lsp::Range{{0, 0}, {0, 0}}}};
+    }
 
     auto binding = Luau::findBindingAtPosition(*module, *sourceModule, position);
     if (binding)
@@ -213,7 +255,9 @@ lsp::DefinitionResult WorkspaceFolder::gotoDefinition(const lsp::DefinitionParam
         auto ancestry = Luau::findAstAncestryOfPosition(*sourceModule, position);
         if (ancestry.size() >= 2)
         {
-            if (auto call = ancestry[ancestry.size() - 2]->as<Luau::AstExprCall>(); call && types::matchRequire(*call))
+            if (auto call = ancestry[ancestry.size() - 2]->as<Luau::AstExprCall>();
+                call && types::matchRequire(*call) &&
+                (call->args.data[0]->is<Luau::AstExprConstantString>() || isLocalRootedRequireArgument(call->args.data[0])))
             {
                 if (auto moduleInfo = frontend.moduleResolver.resolveModuleInfo(moduleName, *call))
                 {

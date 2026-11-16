@@ -6,7 +6,7 @@
   "publisher": "horsenuggets",
   "license": "MIT",
   "icon": "assets/icon.png",
-  "version": "2.1.13",
+  "version": "2.1.14",
   "engines": {
     "vscode": "^1.82.0"
   },
@@ -455,6 +455,12 @@
         },
         "luau-lsp.inlayHints.makeInsertable": {
           "markdownDescription": "Whether type annotation inlay hints can be made insertable by clicking",
+          "type": "boolean",
+          "default": true,
+          "scope": "resource"
+        },
+        "luau-lsp.documentLinks.enabled": {
+          "markdownDescription": "Whether to provide clickable document links in require expressions. Disable this to hide persistent link underlines without disabling Go to Definition or Ctrl/Cmd-click navigation. Reload the language server to refresh links in open editors.",
           "type": "boolean",
           "default": true,
           "scope": "resource"

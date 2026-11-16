@@ -4,6 +4,7 @@
 #include "LSP/JsonTomlSyntaxParser.hpp"
 #include "LSP/Completion.hpp"
 #include "LSP/Utils.hpp"
+#include "LSP/Workspace.hpp"
 
 #include "Luau/Config.h"
 #include "Luau/TimeTrace.h"
@@ -213,6 +214,105 @@ std::optional<Luau::ModuleInfo> RobloxPlatform::resolveStringRequire(
     return Luau::ModuleInfo{base};
 }
 
+static std::string mapContext(const std::string& context);
+
+std::optional<Luau::ModuleInfo> RobloxPlatform::resolveNavigationModule(
+    const Luau::ModuleInfo& context, Luau::AstExpr* expression, const Luau::TypeCheckLimits& limits)
+{
+    if (expression->is<Luau::AstExprGlobal>())
+        return resolveModule(&context, expression, limits);
+    auto receiverExists = getSourceNodeFromVirtualPath(context.name) || getSourceNodeFromVirtualPath(mapContext(context.name));
+    if (auto call = expression->as<Luau::AstExprCall>())
+    {
+        auto method = call->func->as<Luau::AstExprIndexName>();
+        if (method && method->index == "FindFirstAncestor" && !receiverExists)
+            return std::nullopt;
+        return resolveModule(&context, expression, limits);
+    }
+
+    std::string name;
+    if (auto index = expression->as<Luau::AstExprIndexName>())
+        name = index->index.value;
+    else if (auto index = expression->as<Luau::AstExprIndexExpr>())
+    {
+        auto string = index->index->as<Luau::AstExprConstantString>();
+        if (!string)
+            return std::nullopt;
+        name.assign(string->value.data, string->value.size);
+    }
+    else
+        return std::nullopt;
+
+    // Bracket access has the same Parent semantics as dot access for navigation.
+    if (name == "Parent")
+    {
+        if (!receiverExists)
+            return std::nullopt;
+        if (auto parent = getParentPath(context.name))
+            return Luau::ModuleInfo{*parent};
+        return std::nullopt;
+    }
+
+    // LocalPlayer is a runtime receiver for the supported StarterPlayer remappings.
+    if (context.name == "game/Players" && name == "LocalPlayer")
+        return resolveModule(&context, expression, limits);
+
+    // Real API properties take precedence over children in Roblox. Consult the declared
+    // class rather than the per-source-node type, which also contains generated children.
+    if (name == "Name" || name == "ClassName")
+        return std::nullopt;
+    if (workspaceFolder)
+    {
+        if (auto node = getSourceNodeFromVirtualPath(mapContext(context.name)))
+        {
+            if (name == "Source" && (*node)->isScript())
+                return std::nullopt;
+            auto scope = workspaceFolder->frontend.globals.globalScope;
+            auto classType = scope->lookupType((*node)->className);
+            if (!classType)
+                classType = scope->lookupType("Instance");
+            if (classType)
+            {
+                auto type = Luau::follow(classType->type);
+                while (auto instance = Luau::get<Luau::ExternType>(type))
+                {
+                    auto property = instance->props.find(name);
+                    if (property != instance->props.end() && !Luau::hasTag(property->second, kSourcemapGeneratedTag))
+                        return std::nullopt;
+                    if (!instance->parent)
+                        break;
+                    type = Luau::follow(*instance->parent);
+                }
+            }
+        }
+    }
+    return resolveModule(&context, expression, limits);
+}
+
+std::optional<Uri> RobloxPlatform::navigationSource(const Luau::ModuleInfo& target, const Luau::TypeCheckLimits& limits)
+{
+    if (target.name == "game/Players/LocalPlayer")
+        return std::nullopt;
+    if (auto source = resolveToRealPath(target.name))
+        return source;
+
+    // Some project sourcemaps retain a Folder and omit its init file. Reuse the existing
+    // string-require entry-point and project-redirect resolver for those directories.
+    if (auto node = getSourceNodeFromVirtualPath(target.name))
+    {
+        for (const auto& [directory, sourceNode] : directoryToSourceNodes)
+        {
+            if (sourceNode != *node)
+                continue;
+            Luau::ModuleInfo context{fileResolver->getModuleName(directory.resolvePath("__navigation__.luau"))};
+            if (auto resolved = LSPPlatform::resolveStringRequire(&context, directory.fsPath(), limits))
+                if (auto source = resolveToRealPath(resolved->name); source && source->exists() && !source->isDirectory())
+                    return source;
+        }
+    }
+    return std::nullopt;
+}
+
 std::optional<Uri> RobloxPlatform::resolveDirectoryRedirect(const Uri& directory) const
 {
     if (directory.resolvePath("init.luau").exists() || directory.resolvePath("init.lua").exists())
@@ -254,14 +354,9 @@ static const SourceNode* getServiceNode(const SourceNode* n)
     return prev;
 }
 
-static std::optional<std::pair<std::string, const char*>> computeSourcemapRequirePath(
-    const RobloxPlatform* platform,
-    const SourceNode* fromNode,
-    const std::unordered_set<const SourceNode*>& fromAncestors,
-    const SourceNode* fromService,
-    const Luau::ModuleName& target,
-    ImportRequireStyle style,
-    const Luau::LanguageServer::AutoImports::AliasMap& availableAliases)
+static std::optional<std::pair<std::string, const char*>> computeSourcemapRequirePath(const RobloxPlatform* platform, const SourceNode* fromNode,
+    const std::unordered_set<const SourceNode*>& fromAncestors, const SourceNode* fromService, const Luau::ModuleName& target,
+    ImportRequireStyle style, const Luau::LanguageServer::AutoImports::AliasMap& availableAliases)
 {
     auto targetIt = platform->virtualPathsToSourceNodes.find(target);
     if (targetIt == platform->virtualPathsToSourceNodes.end())
@@ -395,16 +490,15 @@ std::optional<Luau::LanguageServer::AutoImports::RequirePathComputer> RobloxPlat
 
     auto availableAliases = fileResolver->getConfig(from, workspaceFolder->limits).aliases;
 
-    return [this, fromNode, fromAncestors = std::move(fromAncestors), fromService, style,
-               availableAliases = std::move(availableAliases)](
-               const Luau::ModuleName& /*from*/, const Luau::ModuleName& target)
-        -> std::optional<std::pair<std::string, const char*>>
+    return [this, fromNode, fromAncestors = std::move(fromAncestors), fromService, style, availableAliases = std::move(availableAliases)](
+               const Luau::ModuleName& /*from*/, const Luau::ModuleName& target) -> std::optional<std::pair<std::string, const char*>>
     {
         return computeSourcemapRequirePath(this, fromNode, fromAncestors, fromService, target, style, availableAliases);
     };
 }
 
-std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node, const Luau::TypeCheckLimits& limits)
+std::optional<Luau::ModuleInfo> RobloxPlatform::resolveModule(
+    const Luau::ModuleInfo* context, Luau::AstExpr* node, const Luau::TypeCheckLimits& limits)
 {
 
     if (auto parentResult = LSPPlatform::resolveModule(context, node, limits))

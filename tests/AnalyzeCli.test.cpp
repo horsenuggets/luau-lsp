@@ -10,6 +10,11 @@
 #include "Luau/PrettyPrinter.h"
 #include "LSP/LuauExt.hpp"
 #include "RobloxTypes.hpp"
+#include "LuneTypes.hpp"
+
+#include <cctype>
+#include <fstream>
+#include <iterator>
 
 TEST_SUITE_BEGIN("AnalyzeCli");
 
@@ -157,9 +162,7 @@ TEST_CASE("enable_new_solver_cli_flag")
 
     argparse::ArgumentParser program("test");
     program.set_assign_chars(":=");
-    program.add_argument("--enable-new-solver")
-        .default_value(false)
-        .implicit_value(true);
+    program.add_argument("--enable-new-solver").default_value(false).implicit_value(true);
 
     std::vector<std::string> arguments{"", "--enable-new-solver"};
     program.parse_args(arguments);
@@ -171,9 +174,7 @@ TEST_CASE("enable_new_solver_cli_flag_default_false")
 {
     argparse::ArgumentParser program("test");
     program.set_assign_chars(":=");
-    program.add_argument("--enable-new-solver")
-        .default_value(false)
-        .implicit_value(true);
+    program.add_argument("--enable-new-solver").default_value(false).implicit_value(true);
 
     std::vector<std::string> arguments{""};
     program.parse_args(arguments);
@@ -256,6 +257,385 @@ TEST_CASE("lune_builtin_definitions_are_registered_in_workspace")
 
     auto cr = workspace.checkSimple(filePath, nullptr);
     CHECK_MESSAGE(cr.errors.empty(), (cr.errors.empty() ? "" : Luau::toString(cr.errors[0])));
+}
+
+// Explicit companion contract for @lune/roblox, with no dependency on a local Lune checkout.
+static const std::vector<std::string> luneRobloxExports = {
+    "Axes",
+    "BrickColor",
+    "CFrame",
+    "Color3",
+    "ColorSequence",
+    "ColorSequenceKeypoint",
+    "Content",
+    "Enum",
+    "Faces",
+    "Font",
+    "Instance",
+    "NumberRange",
+    "NumberSequence",
+    "NumberSequenceKeypoint",
+    "PhysicalProperties",
+    "Ray",
+    "Rect",
+    "Region3",
+    "Region3int16",
+    "UDim",
+    "UDim2",
+    "UniqueId",
+    "Vector2",
+    "Vector2int16",
+    "Vector3",
+    "Vector3int16",
+    "deserializeModel",
+    "deserializePlace",
+    "getAuthCookie",
+    "getReflectionDatabase",
+    "implementMethod",
+    "implementProperty",
+    "registerClass",
+    "registerService",
+    "serializeModel",
+    "serializePlace",
+    "studioApplicationPath",
+    "studioBuiltinPluginPath",
+    "studioContentPath",
+    "studioPluginPath",
+};
+
+TEST_CASE("lune_roblox_globals_export_contract_is_complete_and_typed")
+{
+    REQUIRE_EQ(luneRobloxExports.size(), 40);
+    TempDir t("lune_roblox_export_contract");
+    CliClient client;
+    client.globalConfig = Luau::LanguageServer::defaultTestClientConfiguration();
+    client.globalConfig.platform.type = LSPPlatformConfig::Lune;
+    REQUIRE(addBuiltinDefinitions(client));
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+
+    for (const auto& name : luneRobloxExports)
+    {
+        CAPTURE(name);
+        auto path = t.write_child(name + ".luau", "--!strict\nlocal value = " + name + "\nreturn value\n");
+        auto result = workspace.checkSimple(path, nullptr);
+        REQUIRE_MESSAGE(result.errors.empty(), (result.errors.empty() ? "" : Luau::toString(result.errors.front())));
+        // Also pin the type boundary. Merely resolving a global typed as any is not enough.
+        auto invalid = t.write_child(name + "_invalid.luau", "--!strict\nlocal value: number = " + name + "\nreturn value\n");
+        CHECK_FALSE(workspace.checkSimple(invalid, nullptr).errors.empty());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_roblox_definitions_load_without_errors")
+{
+    std::ifstream source("scripts/luneGlobalTypes.d.lua");
+    REQUIRE(source.is_open());
+    const std::string definitions{std::istreambuf_iterator<char>(source), std::istreambuf_iterator<char>()};
+    CHECK_EQ(std::string(LUNE_GLOBAL_TYPES), definitions);
+
+    switchToStandardPlatform();
+    Luau::unfreeze(workspace.frontend.globals.globalTypes);
+    if (!FFlag::LuauSolverV2)
+        Luau::unfreeze(workspace.frontend.globalsForAutocomplete.globalTypes);
+    auto result = workspace.loadDefinitionFile("@lune", LUNE_GLOBAL_TYPES);
+    Luau::freeze(workspace.frontend.globals.globalTypes);
+    if (!FFlag::LuauSolverV2)
+        Luau::freeze(workspace.frontend.globalsForAutocomplete.globalTypes);
+    for (const auto& error : result.parseResult.errors)
+        CHECK_MESSAGE(false, std::string(error.what()));
+    if (result.module)
+        for (const auto& error : result.module->errors)
+            CHECK_MESSAGE(false, Luau::toString(error));
+    CHECK(result.success);
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_roblox_datatypes_have_supported_signatures")
+{
+    switchToStandardPlatform();
+    loadDefinition("@lune", LUNE_GLOBAL_TYPES);
+    auto result = check(R"(
+        --!strict
+        local axes: Axes = Axes.new(Enum.Axis.X, Enum.NormalId.Top)
+        local face: boolean = axes.Top
+        local faces: Faces = Faces.new(Enum.NormalId.Front)
+        local back: boolean = faces.Back
+        local brick: BrickColor = BrickColor.new(Color3.fromRGB(1, 2, 3))
+        local color: Color3 = BrickColor.Red().Color:Lerp(brick.Color, 0.5)
+        local hue: number, saturation: number, value: number = color:ToHSV()
+        local sequence: ColorSequence = ColorSequence.new({ColorSequenceKeypoint.new(0, color), ColorSequenceKeypoint.new(1, color)})
+        local sample: Color3 = sequence.Keypoints[1].Value
+        local numeric: NumberSequence = NumberSequence.new({NumberSequenceKeypoint.new(0, 2, 0.5), NumberSequenceKeypoint.new(1, 3)})
+        local envelope: number = numeric.Keypoints[1].Envelope
+        local range: NumberRange = NumberRange.new(1, 2)
+        local minimum: number = range.Min
+        local font: Font = Font.fromName("BuilderSans", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+        local bold: boolean = font.Bold
+        local content: Content = Content.fromAssetId(123)
+        local uri: string? = content.Uri
+        local object: Instance? = Content.none.Object
+        local source: EnumItem = content.SourceType
+        local physics: PhysicalProperties = PhysicalProperties.new(1, 0.5, 0.5, 1, 1, 0.2)
+        local absorption: number = physics.AcousticAbsorption
+        local material: PhysicalProperties = PhysicalProperties.new(Enum.Material.Plastic)
+        local ray: Ray = Ray.new(Vector3.zero, Vector3.yAxis)
+        local nearest: Vector3 = ray:ClosestPoint(Vector3.one)
+        local distance: number = ray.Unit:Distance(nearest)
+        local rect: Rect = Rect.new(Vector2.zero, Vector2.one)
+        local width: number = Rect.new(0, 0, 10, 20).Width
+        local region: Region3 = Region3.new(Vector3.zero, Vector3.one):ExpandToGrid(4)
+        local size: Vector3 = region.Size
+        local integer: Vector3int16 = Vector3int16.new(1, 2, 3) * 2
+        local integerRegion: Region3int16 = Region3int16.new(Vector3int16.new(), integer)
+        local integerMin: Vector3int16 = integerRegion.Min
+        local vector: Vector2int16 = -Vector2int16.new(1, 2)
+        local x: number = vector.X
+        local dim: UDim = UDim.new(0.5, 10) + UDim.new()
+        local dims: UDim2 = UDim2.new(dim, dim):Lerp(UDim2.fromScale(1, 1), 0.5)
+        local function optionalDims(x: UDim?, y: UDim?): UDim2
+            return UDim2.new(x, y)
+        end
+        local emptyDims: UDim2 = UDim2.new()
+        local nilDims: UDim2 = UDim2.new(nil, nil)
+        local xDim: UDim2 = UDim2.new(dim)
+        local yDim: UDim2 = UDim2.new(nil, dim)
+        local xOffset: UDim2 = UDim2.new(nil, 10)
+        local yScale: UDim2 = UDim2.new(nil, nil, 0.5)
+        local yOffset: UDim2 = UDim2.new(nil, nil, nil, 10)
+        local offset: number = dims.X.Offset
+        local id: UniqueId = UniqueId.fromString(tostring(UniqueId.new()))
+        local null: UniqueId = UniqueId.null
+        local angle: number = Vector2.xAxis:Angle(Vector2.yAxis)
+        local normal: Vector3 = Vector3.fromNormalId(Enum.NormalId.Top)
+        local axis: Vector3 = Vector3.fromAxis(Enum.Axis.X)
+        local rotation: CFrame = CFrame.fromEulerAngles(1, 2, 3, Enum.RotationOrder.YXZ)
+        local between: CFrame = CFrame.fromRotationBetweenVectors(axis, normal)
+        local matrix: CFrame = CFrame.new(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+        local position: Vector3 = matrix * Vector3.one
+        local first: Vector3, second: Vector3 = matrix:PointToWorldSpace(Vector3.zero, Vector3.one)
+        local rx: number, ry: number, rz: number = rotation:ToEulerAngles(Enum.RotationOrder.XYZ)
+        local delta: number = rotation:AngleBetween(between)
+    )");
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_roblox_rect_optional_bounds_and_arithmetic")
+{
+    switchToStandardPlatform();
+    loadDefinition("@lune", LUNE_GLOBAL_TYPES);
+    auto result = check(R"(
+        --!strict
+        local function optionalBounds(min: Vector2?, max: Vector2?): Rect
+            return Rect.new(min, max)
+        end
+        local empty: Rect = Rect.new()
+        local minimum: Rect = Rect.new(Vector2.one)
+        local maximum: Rect = Rect.new(nil, Vector2.one)
+        local explicitNil: Rect = Rect.new(Vector2.one, nil)
+        local nilBounds: Rect = Rect.new(nil, nil)
+        local negated: Rect = -minimum
+        local added: Rect = minimum + maximum
+        local subtracted: Rect = maximum - minimum
+        local width: number = (added + negated - subtracted).Width
+        local y0: Rect = Rect.new(nil, 1)
+        local x1: Rect = Rect.new(nil, nil, 1)
+        local y1: Rect = Rect.new(nil, nil, nil, 1)
+    )");
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "lune_roblox_instances_enums_and_helpers_have_typed_results")
+{
+    switchToStandardPlatform();
+    loadDefinition("@lune", LUNE_GLOBAL_TYPES);
+    auto result = check(R"(
+        --!strict
+        local instance: Instance = Instance.new("Folder")
+        instance.Parent = Instance.new("Folder")
+        instance.Name = "Root"
+        local clone: Instance = instance:Clone()
+        local descendants: {Instance} = clone:GetDescendants()
+        local found: Instance? = clone:FindFirstChild("Child", true)
+        local matches: {Instance} = clone:QueryDescendants("Folder")
+        instance:AddTag("Test")
+        local tagged: boolean = instance:HasTag("Test")
+        local tags: {string} = instance:GetTags()
+        local fullName: string = instance:GetFullName()
+        local enums: {Enum} = Enum:GetEnums()
+        local items: {EnumItem} = Enum.Material:GetEnumItems()
+        local item: EnumItem? = Enum.Material:FromName("Plastic")
+        local fromValue: EnumItem? = Enum.Material:FromValue(256)
+        local enumType: Enum = items[1].EnumType
+        local name: string = items[1].Name
+        local value: number = items[1].Value
+        local model: DataModel = deserializePlace("contents")
+        local created: DataModel = Instance.new("DataModel")
+        local service: Instance = model:GetService("Workspace")
+        local maybeService: Instance? = created:FindService("Workspace")
+        local instances: {Instance} = deserializeModel("contents")
+        local binary: string = serializePlace(model)
+        local xml: string = serializeModel(instances, true)
+        local cookie: string? = getAuthCookie(true)
+        local application: string = studioApplicationPath()
+        local builtin: string = studioBuiltinPluginPath()
+        local content: string = studioContentPath()
+        local plugin: string = studioPluginPath()
+        registerClass("Custom", "Folder")
+        registerService("CustomService")
+        implementProperty("Folder", "Count", function(target: Instance): number
+            return #target:GetChildren()
+        end, function(target: Instance, value: number)
+            target:SetAttribute("Count", value)
+        end)
+        implementMethod("Folder", "Echo", function(target: Instance, message: string): (string, number)
+            return target.Name .. message, 1
+        end)
+        local database = getReflectionDatabase()
+        local version: string = database.Version
+        local names: {string} = database:GetClassNames()
+        local enumNames: {string} = database:GetEnumNames()
+        local class = database:GetClass("Part")
+        if class then
+            local superclass: string? = class.Superclass
+            local datatype: string = class.Properties.Name.Datatype
+            local scriptability: DatabaseScriptability = class.Properties.Name.Scriptability
+        end
+        local descriptor = database:FindEnum("Material")
+        if descriptor then
+            local materialId: number = descriptor.Items.Plastic
+        end
+    )");
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE("lune_roblox_globals_reject_invalid_arguments_and_unsupported_members")
+{
+    TempDir t("lune_roblox_invalid_arguments");
+    CliClient client;
+    client.globalConfig = Luau::LanguageServer::defaultTestClientConfiguration();
+    client.globalConfig.platform.type = LSPPlatformConfig::Lune;
+    REQUIRE(addBuiltinDefinitions(client));
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    size_t index = 0;
+    for (const auto& source : {
+             "Axes.new(1)",
+             "BrickColor.new(false)",
+             "CFrame.new(1, 2)",
+             "Color3.fromHex(123)",
+             "ColorSequence.new({NumberSequenceKeypoint.new(0, 1)})",
+             "ColorSequenceKeypoint.new(0, 1)",
+             "Content.fromObject(1)",
+             "Faces.new(true)",
+             "Font.fromId(false)",
+             "Instance.new(1)",
+             "NumberRange.new(false)",
+             "NumberSequence.new(Color3.new())",
+             "NumberSequenceKeypoint.new(0, false)",
+             "PhysicalProperties.new(true)",
+             "Ray.new(Vector2.zero, Vector3.zero)",
+             "Rect.new(Vector3.zero, Vector3.one)",
+             "local value = Rect.new() + Vector2.one",
+             "local value = Rect.new() - 1",
+             "Region3.new(Vector2.zero, Vector2.one)",
+             "Region3int16.new(Vector3.zero, Vector3.one)",
+             "UDim.new(false)",
+             "UDim2.fromOffset(false)",
+             "UniqueId.fromString(false)",
+             "Vector2.new(false)",
+             "Vector2int16.new(false)",
+             "Vector3.fromAxis(1)",
+             "Vector3int16.new(false)",
+             "Enum.Material:FromValue(false)",
+             "deserializeModel(1)",
+             "deserializePlace(false)",
+             "getAuthCookie(1)",
+             "getReflectionDatabase():GetClass(1)",
+             "implementMethod(1, 'Method', function() end)",
+             "implementMethod('Folder', 'Method', 1)",
+             "implementProperty('Folder', 'Value', function(target: string) return target end)",
+             "registerClass('Custom', false)",
+             "registerService(1)",
+             "serializeModel({1})",
+             "serializePlace(Instance.new('Folder'))",
+             "serializeModel({}, 'xml')",
+             "studioApplicationPath(1)",
+             "studioBuiltinPluginPath(1)",
+             "studioContentPath(1)",
+             "studioPluginPath(1)",
+             "Instance.new('Folder'):WaitForChild('Child')",
+             "Vector3.min(Vector3.zero)",
+             "Color3.toHSV(Color3.new())",
+             "Random.new()",
+             "game:GetService('Workspace')",
+             "workspace:GetChildren()",
+         })
+    {
+        CAPTURE(source);
+        auto path = t.write_child(std::to_string(index++) + ".luau", std::string("--!strict\n") + source);
+        auto result = workspace.checkSimple(path, nullptr);
+        LUAU_LSP_REQUIRE_ERRORS(result);
+    }
+}
+
+TEST_CASE("lune_roblox_helper_results_preserve_types_and_optionality")
+{
+    TempDir t("lune_roblox_invalid_results");
+    CliClient client;
+    client.globalConfig = Luau::LanguageServer::defaultTestClientConfiguration();
+    client.globalConfig.platform.type = LSPPlatformConfig::Lune;
+    REQUIRE(addBuiltinDefinitions(client));
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    size_t index = 0;
+    for (const auto& source : {
+             "local value: string = deserializeModel('contents')",
+             "local value: string = deserializePlace('contents')",
+             "local value: number = serializeModel({})",
+             "local value: number = serializePlace(Instance.new('DataModel'))",
+             "local value: string = getAuthCookie()",
+             "local value: number = getReflectionDatabase().Version",
+             "local value: number = studioApplicationPath()",
+             "local value: number = studioBuiltinPluginPath()",
+             "local value: number = studioContentPath()",
+             "local value: number = studioPluginPath()",
+             "local value: string = Instance.new('Folder'):FindFirstChild('Child').Name",
+             "local value: number = Enum.Material.Plastic.Name",
+             "local value: number = getReflectionDatabase():GetClass('Part').Name",
+             "local value: string = Instance.new('Folder'):GetAttribute('Dynamic')",
+             "implementProperty('Folder', 'Count', function(): number return 1 end, function(target: Instance, value: string) end)",
+         })
+    {
+        CAPTURE(source);
+        auto path = t.write_child(std::to_string(index++) + ".luau", std::string("--!strict\n") + source);
+        auto result = workspace.checkSimple(path, nullptr);
+        LUAU_LSP_REQUIRE_ERRORS(result);
+    }
+}
+
+TEST_CASE("lune_roblox_helpers_do_not_leak_to_other_platforms")
+{
+    for (auto platform : {LSPPlatformConfig::Standard, LSPPlatformConfig::Roblox})
+    {
+        CAPTURE(int(platform));
+        TempDir t("lune_roblox_platform_isolation");
+        CliClient client;
+        client.globalConfig = Luau::LanguageServer::defaultTestClientConfiguration();
+        client.globalConfig.platform.type = platform;
+        REQUIRE(addBuiltinDefinitions(client));
+        WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+        setupCliWorkspace(client, workspace);
+        for (const auto& name : luneRobloxExports)
+        {
+            // Roblox legitimately has the datatype globals, but never Lune's helpers.
+            if (platform == LSPPlatformConfig::Roblox && std::isupper(static_cast<unsigned char>(name.front())))
+                continue;
+            CAPTURE(name);
+            auto path = t.write_child(name + ".luau", "--!strict\nreturn " + name);
+            auto result = workspace.checkSimple(path, nullptr);
+            REQUIRE_FALSE(result.errors.empty());
+            CHECK(Luau::get<Luau::UnknownSymbol>(result.errors.front()) != nullptr);
+        }
+    }
 }
 
 TEST_CASE("parse_definitions_files_handles_new_syntax")

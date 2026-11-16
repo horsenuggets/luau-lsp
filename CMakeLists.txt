@@ -7,7 +7,7 @@ option(LSP_STATIC_CRT "Link with the static CRT (/MT)" OFF)
 option(LSP_BUILD_WITH_SENTRY "Build with Sentry (crash reporting)" OFF)
 option(LSP_WERROR "Warnings as errors" ON)
 
-set(LSP_VERSION "1.70.1-horse.1.13")
+set(LSP_VERSION "1.70.1-horse.1.14")
 set(LSP_NAME "Luau")
 
 if (LSP_STATIC_CRT)
@@ -121,6 +121,7 @@ target_sources(Luau.LanguageServer.Test PRIVATE
         tests/Bytecode.test.cpp
         tests/MagicFunctions.test.cpp
         tests/Documentation.test.cpp
+        tests/DocumentLink.test.cpp
         tests/TextDocument.test.cpp
         tests/Uri.test.cpp
         tests/Utils.test.cpp
