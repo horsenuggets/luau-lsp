@@ -367,7 +367,8 @@ static std::optional<Uri> inferNodeDirectory(const Uri& rootUri, const SourceNod
     for (const auto* child : node->children)
         if (auto path = nodePath(rootUri, child))
             if (auto directory = path->parent(); directory && directory->isDirectory())
-                return directory->filename() == node->name && rootUri.isAncestorOf(*directory) ? directory : std::nullopt;
+                if (directory->filename() == node->name && rootUri.isAncestorOf(*directory))
+                    return directory;
     return std::nullopt;
 }
 

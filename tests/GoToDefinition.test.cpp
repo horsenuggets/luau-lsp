@@ -1274,6 +1274,27 @@ TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_omits_virtual_pr
     CHECK(definition("local value = project.|A").empty());
 }
 
+TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_skips_explicitly_mapped_children_regardless_of_order")
+{
+    client->folderNavigation = true;
+    tempDir.touch_child(".git");
+    tempDir.write_child("Source/Foo.luau", "return {}\n");
+    tempDir.write_child("Other/External.luau", "return {}\n");
+    const std::string external = R"({"name":"External","className":"ModuleScript","filePaths":["Other/External.luau"]})";
+    const std::string foo = R"({"name":"Foo","className":"ModuleScript","filePaths":["Source/Foo.luau"]})";
+    // An explicitly mapped child lives elsewhere, so only the other child anchors Source.
+    for (const auto& children : {external + "," + foo, foo + "," + external})
+    {
+        CAPTURE(children);
+        loadSourcemap(R"({"name":"Root","className":"Folder","filePaths":["default.project.json"],"children":[
+            {"name":"Main","className":"ModuleScript","filePaths":["main.luau"]},
+            {"name":"Source","className":"Folder","children":[)" +
+                      children + R"(]}
+        ]})");
+        target("local value = project.Sour|ce", "Source");
+    }
+}
+
 TEST_CASE_FIXTURE(InstanceNavigationFixture, "folder_navigation_opens_omitted_entry_points_of_inferred_folders")
 {
     client->folderNavigation = true;
