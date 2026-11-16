@@ -59,6 +59,11 @@ The following settings are configurable for sourcemap generation:
 - `luau-lsp.sourcemap.includeNonScripts`: Whether to include non script instances in the sourcemap. May be disabled for expensive DataModels (default: on)
 - `luau-lsp.sourcemap.sourcemapFile`: What sourcemap file to use (default: `sourcemap.json`)
 
+A project file whose root isn't a `DataModel` (e.g. a development project that also covers scripts and tests) can
+nest the game in a node with `"$className": "DataModel"`. The shallowest such node becomes `game`, so `game`,
+`game:GetService(...)`, instance requires, and `@game` all resolve into it, while Lune's `project` global keeps the
+project root.
+
 If you do not use Rojo, you can still use the Luau Language Server, you just need to manually generate a `sourcemap.json`
 file for your particular project layout. You can configure `luau-lsp.sourcemap.generatorCommand` to run a custom generator.
 If your generator does not support file watching, enable `luau-lsp.sourcemap.useVSCodeWatcher`.

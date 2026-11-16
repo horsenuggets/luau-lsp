@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added
+
+- Typed `game` from a `DataModel` node nested in a sourcemap whose root isn't one, such as a
+  development project that nests the game next to its scripts and tests. `game`,
+  `game:GetService(...)`, instance requires, `@game`, and the Studio companion plugin all use
+  the nested node, while Lune's `project` global keeps the project root.
+
 ## `1.70.1-horse.1.14`
 
 ### Added
