@@ -96,8 +96,8 @@ struct NavigationLinkFixture : Fixture
             REQUIRE_EQ(arguments.size(), 1);
             const auto& argument = arguments[0];
             CHECK_EQ(argument.at("$mid"), 1);
-            Uri directory{argument.at("scheme").get<std::string>(), argument.at("authority").get<std::string>(),
-                argument.at("path").get<std::string>()};
+            Uri directory{
+                argument.at("scheme").get<std::string>(), argument.at("authority").get<std::string>(), argument.at("path").get<std::string>()};
             CHECK(directory.isDirectory());
             described.emplace(text, directory.lexicallyRelative(workspace.rootUri) + "/");
         }
@@ -153,17 +153,21 @@ TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_cover_lune_files_and_
     CHECK_EQ(links("local value = project"), "");
 }
 
-TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_split_instance_requires_into_segments")
+TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_keep_whole_argument_links_for_instance_requires")
 {
     lune();
     tempDir.touch_child(".git");
     tempDir.write_child("Source/Foo.luau", "return {}\n");
 
-    // Instance paths are linked per segment rather than across the whole argument, so the
-    // links never overlap.
-    CHECK_EQ(links("local Foo = require(project.Source.Foo)"), "Foo -> Source/Foo.luau, Source -> Source/");
-    // Other requires keep the single argument link.
+    // The whole argument links to the required module, and its segments get no overlapping
+    // links of their own.
+    CHECK_EQ(links("local Foo = require(project.Source.Foo)"), "project.Source.Foo -> Source/Foo.luau");
     CHECK_EQ(links("local Foo = require(\"./Source/Foo\")"), "\"./Source/Foo\" -> Source/Foo.luau");
+    // Segments outside the require are still linked.
+    CHECK_EQ(
+        links("local Foo = require(project.Source.Foo)\nlocal value = project.Source"), "Source -> Source/, project.Source.Foo -> Source/Foo.luau");
+    // A require that doesn't resolve has no link of its own, so its segments stay linked.
+    CHECK_EQ(links("local Foo = require(project.Source.Missing)"), "Source -> Source/");
 }
 
 TEST_CASE_FIXTURE(NavigationLinkFixture, "navigation_links_keep_whole_argument_links_for_bare_roots")

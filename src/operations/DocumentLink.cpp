@@ -40,7 +40,8 @@ static std::optional<Luau::Location> segmentLocation(Luau::AstExpr* expression)
         return index->indexLocation;
     if (auto index = expression->as<Luau::AstExprIndexExpr>(); index && index->index->is<Luau::AstExprConstantString>())
         return index->index->location;
-    if (auto call = expression->as<Luau::AstExprCall>(); call && call->self && call->args.size >= 1 && call->args.data[0]->is<Luau::AstExprConstantString>())
+    if (auto call = expression->as<Luau::AstExprCall>();
+        call && call->self && call->args.size >= 1 && call->args.data[0]->is<Luau::AstExprConstantString>())
         return call->args.data[0]->location;
     return std::nullopt;
 }
@@ -65,6 +66,16 @@ static Uri revealInExplorerUri(const Uri& directory)
     return Uri{"command", "", "revealInExplorer", json::array({argument}).dump()};
 }
 
+std::optional<Uri> WorkspaceFolder::resolveRequireLink(const Luau::ModuleName& moduleName, Luau::AstExpr* argument)
+{
+    if (auto moduleInfo = frontend.moduleResolver.resolveModuleInfo(moduleName, *argument))
+        if (auto uri = platform->resolveToRealPath(moduleInfo->name))
+            return uri;
+    // Standalone references like project.Source.Foo resolve through the platform when the
+    // module resolver doesn't know them.
+    return platform->resolveExpressionToSource(moduleName, argument, limits);
+}
+
 std::vector<lsp::DocumentLink> WorkspaceFolder::documentLink(const lsp::DocumentLinkParams& params)
 {
     if (!client->getConfiguration(rootUri).documentLinks.enabled)
@@ -83,36 +94,34 @@ std::vector<lsp::DocumentLink> WorkspaceFolder::documentLink(const lsp::Document
     FindRequireVisitor visitor;
     visitor.visit(sourceModule->root);
 
+    // A require links its whole argument to the required module, so the segments inside it
+    // aren't linked separately, which would overlap that link.
+    std::vector<Luau::Location> linkedRequires;
     for (auto& require : visitor.requireInfos)
     {
-        // Instance paths like require(script.Child) get a link per segment below, which
-        // would overlap a link over the whole argument. Bare roots like require(project)
-        // have no segments, so they keep the whole-argument link.
-        auto argument = require.require;
-        while (auto group = argument->as<Luau::AstExprGroup>())
-            argument = group->expr;
-        if (segmentLocation(argument) && platform->resolveExpressionToSource(moduleName, argument, limits))
+        auto uri = resolveRequireLink(moduleName, require.require);
+        if (!uri)
             continue;
-        if (auto moduleInfo = frontend.moduleResolver.resolveModuleInfo(moduleName, *require.require))
-        {
-            // Resolve the module info to a URI
-            if (auto uri = platform->resolveToRealPath(moduleInfo->name))
-            {
-                lsp::DocumentLink link;
-                link.target = *uri;
-                Luau::Position endPos{require.location.end.line, require.location.end.column - 1};
-                link.range = {textDocument->convertPosition(require.location.begin), textDocument->convertPosition(endPos)};
-                result.push_back(link);
-            }
-        }
+        lsp::DocumentLink link;
+        link.target = *uri;
+        Luau::Position endPos{require.location.end.line, require.location.end.column - 1};
+        link.range = {textDocument->convertPosition(require.location.begin), textDocument->convertPosition(endPos)};
+        result.push_back(link);
+        linkedRequires.push_back(require.location);
     }
 
-    // Every navigable segment is linked, so all of them are underlined consistently. Files
-    // open directly, while folders are revealed in the explorer for clients that support it.
+    // Every other navigable segment is linked, so all of them are underlined consistently.
+    // Files open directly, while folders are revealed in the explorer for clients that support it.
     FindNavigationVisitor navigationVisitor;
     sourceModule->root->visit(&navigationVisitor);
     for (const auto& [expression, location] : navigationVisitor.segments)
     {
+        if (std::any_of(linkedRequires.begin(), linkedRequires.end(),
+                [&location = location](const auto& require)
+                {
+                    return require.encloses(location);
+                }))
+            continue;
         lsp::DocumentLink link;
         link.range = {textDocument->convertPosition(location.begin), textDocument->convertPosition(location.end)};
         if (auto source = platform->resolveExpressionToSource(moduleName, expression, limits))
