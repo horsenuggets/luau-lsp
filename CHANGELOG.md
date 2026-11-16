@@ -17,8 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Extended `luau-lsp.documentLinks.enabled` to underline every navigable segment of a
   standalone script reference, not just require arguments, so the setting now turns all
-  persistent navigation underlines on or off. Instance-path requires are linked per
-  segment.
+  persistent navigation underlines on or off. Require arguments keep a single link to the
+  required module, which now also covers Lune `project` paths.
+- Changed hovers on any segment of a resolvable require path, such as `Components` in
+  `require(Package.Components.Base.Block)`, to describe the required module, matching
+  where the require link leads.
 
 ### Fixed
 
