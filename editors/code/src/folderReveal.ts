@@ -31,16 +31,24 @@ export function singleTarget(
 }
 
 /**
- * Picks where to jump instead of the folder. This is the character just before the clicked
+ * Picks where to jump instead of the folder. This is the position just before the clicked
  * word, which a click on the word itself can never place the cursor at, so the jump always
- * produces its own selection change.
+ * produces its own selection change. A word at the start of a line, such as the second half
+ * of a reference split across lines, jumps to the end of the previous line instead.
  */
 export function placeholderPosition(
   wordRange: vscode.Range | undefined,
   position: vscode.Position,
+  lineLength: (line: number) => number,
 ): vscode.Position {
   const start = wordRange?.start ?? position;
-  return start.character > 0 ? start.translate(0, -1) : start;
+  if (start.character > 0) {
+    return start.translate(0, -1);
+  }
+  if (start.line > 0) {
+    return new vscode.Position(start.line - 1, lineLength(start.line - 1));
+  }
+  return start;
 }
 
 /**
@@ -122,9 +130,14 @@ export class FolderRevealer implements vscode.Disposable {
     if (!target || !(await isDirectory(target))) {
       return result;
     }
+    // A canceled request must not replace the pending reveal of a newer one.
+    if (token.isCancellationRequested) {
+      return undefined;
+    }
     const placeholder = placeholderPosition(
       document.getWordRangeAtPosition(position),
       position,
+      (line) => document.lineAt(line).text.length,
     );
     this.pending = {
       document: document.uri.toString(),

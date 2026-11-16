@@ -40,27 +40,50 @@ suite("Folder Reveal Test Suite", () => {
   });
 
   suite("placeholderPosition", () => {
+    const lineLength = (line: number) => [22, 30, 9, 40][line];
+
     test("lands just before the clicked word", () => {
       const word = new vscode.Range(0, 22, 0, 28);
       assert.ok(
-        placeholderPosition(word, new vscode.Position(0, 25)).isEqual(
-          new vscode.Position(0, 21),
-        ),
+        placeholderPosition(
+          word,
+          new vscode.Position(0, 25),
+          lineLength,
+        ).isEqual(new vscode.Position(0, 21)),
+      );
+      assert.ok(
+        placeholderPosition(
+          undefined,
+          new vscode.Position(1, 4),
+          lineLength,
+        ).isEqual(new vscode.Position(1, 3)),
       );
     });
 
-    test("stays in bounds at the start of a line", () => {
+    test("moves to the previous line for words that start a line", () => {
+      // e.g. "local value = project." followed by "Source" on the next line.
       const word = new vscode.Range(3, 0, 3, 6);
-      assert.ok(
-        placeholderPosition(word, new vscode.Position(3, 2)).isEqual(
-          new vscode.Position(3, 0),
-        ),
+      const placeholder = placeholderPosition(
+        word,
+        new vscode.Position(3, 2),
+        lineLength,
       );
-      assert.ok(
-        placeholderPosition(undefined, new vscode.Position(1, 4)).isEqual(
-          new vscode.Position(1, 3),
-        ),
-      );
+      assert.ok(placeholder.isEqual(new vscode.Position(2, 9)));
+      assert.ok(!word.contains(placeholder));
+    });
+
+    test("never lands inside the clicked word", () => {
+      for (const word of [
+        new vscode.Range(0, 0, 0, 6),
+        new vscode.Range(1, 0, 1, 6),
+        new vscode.Range(2, 3, 2, 9),
+      ]) {
+        const placeholder = placeholderPosition(word, word.start, lineLength);
+        // Only a word at the very start of the document has nowhere else to go.
+        if (!word.start.isEqual(new vscode.Position(0, 0))) {
+          assert.ok(!word.contains(placeholder), `${word.start.line}`);
+        }
+      }
     });
   });
 
@@ -282,6 +305,46 @@ suite("Folder Reveal Test Suite", () => {
           "workbench.action.closeActiveEditor",
         );
       }
+    });
+
+    test("a canceled request keeps a newer request's pending reveal", async () => {
+      const { revealer, revealed } = setup();
+      const canceled = new vscode.CancellationTokenSource();
+      let finishOlder: () => void = () => {};
+      const olderStarted = new Promise<void>((resolve) => {
+        finishOlder = resolve;
+      });
+      // The older request (on "Source") is still resolving when the newer one finishes.
+      const older = revealer.provideDefinition(
+        document,
+        new vscode.Position(0, 25),
+        canceled.token,
+        async () => {
+          await olderStarted;
+          return new vscode.Location(folder, new vscode.Position(0, 0));
+        },
+      );
+      const newerDocument = await vscode.workspace.openTextDocument({
+        language: "plaintext",
+        content: "local value = project.Source.Foo",
+      });
+      await revealer.provideDefinition(
+        newerDocument,
+        new vscode.Position(0, 25),
+        token,
+        async () => new vscode.Location(folder, new vscode.Position(0, 0)),
+      );
+      canceled.cancel();
+      finishOlder();
+      assert.strictEqual(await older, undefined);
+
+      revealer.handleSelection(
+        newerDocument.uri,
+        [new vscode.Selection(0, 21, 0, 21)],
+        undefined,
+      );
+      assert.deepStrictEqual(revealed, [folder.toString()]);
+      revealer.dispose();
     });
 
     test("a hover that's never clicked expires", async () => {
