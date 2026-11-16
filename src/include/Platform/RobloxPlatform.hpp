@@ -46,6 +46,10 @@ const std::string kGameAlias = "game";
 /// worktrees and submodules), matching how Lune resolves its `project` global.
 std::optional<Uri> findGitRoot(const Uri& directory);
 
+/// Whether two virtual paths share a root (`game` or `ProjectRoot`). A nested DataModel is a separate root from the
+/// project around it.
+bool isInSameVirtualRoot(const Luau::ModuleName& first, const Luau::ModuleName& second);
+
 struct SourceNode
 {
     const SourceNode* parent = nullptr; // Can be null! NOT POPULATED BY SOURCEMAP, must be written to manually
@@ -122,6 +126,9 @@ private:
     // The project path a nested DataModel would have had (e.g. `ProjectRoot/Source/DataModel`), or empty when the game
     // isn't nested. Its subtree is registered under `game` instead
     std::string nestedDataModelPath;
+
+    /// Rewrites a project path into a nested DataModel (e.g. `ProjectRoot/Source/DataModel/X`) to its `game` path
+    Luau::ModuleName canonicalizeVirtualPath(const Luau::ModuleName& path) const;
 
     /// The virtual path of a named child, mapping player containers to their starter folders and a nested DataModel
     /// reached through the project to `game`

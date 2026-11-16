@@ -2843,4 +2843,91 @@ TEST_CASE_FIXTURE(Fixture, "string_requires_run_context_server_script_acts_as_se
     CHECK_FALSE(getItem(result, "ClientModule"));
 }
 
+// A development project with the game nested in `Source` and a test module outside it, whose files don't mirror the
+// sourcemap layout
+static const char* NESTED_DATA_MODEL_AUTO_IMPORTS_SOURCEMAP = R"(
+    {
+        "name": "my-game-dev",
+        "className": "Folder",
+        "children": [
+            {
+                "name": "Source",
+                "className": "Folder",
+                "children": [
+                    {
+                        "name": "DataModel",
+                        "className": "DataModel",
+                        "children": [
+                            {
+                                "name": "ReplicatedStorage",
+                                "className": "ReplicatedStorage",
+                                "children": [{"name": "Shared", "className": "ModuleScript", "filePaths": ["game/Shared.luau"]}]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "name": "Tests",
+                "className": "Folder",
+                "children": [{"name": "Runner", "className": "ModuleScript", "filePaths": ["Tests/Runner.luau"]}]
+            }
+        ]
+    }
+)";
+
+static std::vector<lsp::CompletionItem> completeAutoImports(Fixture& fixture, const std::string& file, const std::string& name)
+{
+    auto [source, marker] = sourceWithMarker(R"(|)");
+    auto uri = fixture.newDocument(file, source);
+
+    lsp::CompletionParams params;
+    params.textDocument = lsp::TextDocumentIdentifier{uri};
+    params.position = marker;
+
+    return filterAutoImports(fixture.workspace.completion(params, nullptr), name);
+}
+
+TEST_CASE_FIXTURE(Fixture, "auto_imports_do_not_cross_between_a_nested_game_and_its_project")
+{
+    client->globalConfig.completion.imports.enabled = true;
+    loadSourcemap(NESTED_DATA_MODEL_AUTO_IMPORTS_SOURCEMAP);
+
+    for (bool stringRequires : {true, false})
+    {
+        for (auto style : {ImportRequireStyle::Auto, ImportRequireStyle::AlwaysRelative, ImportRequireStyle::AlwaysAbsolute,
+                 ImportRequireStyle::NearestAbsolute})
+        {
+            CAPTURE(stringRequires);
+            CAPTURE(static_cast<int>(style));
+            client->globalConfig.completion.imports.stringRequires.enabled = stringRequires;
+            client->globalConfig.completion.imports.requireStyle = style;
+
+            CHECK(completeAutoImports(*this, "game/Shared.luau", "Runner").empty());
+            CHECK(completeAutoImports(*this, "Tests/Runner.luau", "Shared").empty());
+        }
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "string_auto_imports_reach_across_a_nested_game_through_an_alias")
+{
+    loadLuaurc(R"(
+    {
+        "aliases": {
+            "tests": "Tests"
+        }
+    })");
+
+    client->globalConfig.completion.imports.enabled = true;
+    client->globalConfig.completion.imports.stringRequires.enabled = true;
+    client->globalConfig.completion.imports.requireStyle = ImportRequireStyle::AlwaysRelative;
+    loadSourcemap(NESTED_DATA_MODEL_AUTO_IMPORTS_SOURCEMAP);
+
+    auto imports = completeAutoImports(*this, "game/Shared.luau", "Runner");
+
+    REQUIRE_EQ(imports.size(), 1);
+    REQUIRE_EQ(imports[0].additionalTextEdits.size(), 1);
+    CHECK_EQ(imports[0].additionalTextEdits[0].newText, "local Runner = require(\"@tests/Runner\")\n");
+}
+
 TEST_SUITE_END();

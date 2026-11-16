@@ -110,6 +110,10 @@ std::vector<InstanceRequireResult> computeAllInstanceRequires(const InstanceRequ
         if (!isScriptContextCompatible(callerContext, node->scriptContext))
             continue;
 
+        // A nested game and the project around it are separate roots, so no instance path reaches across them
+        if (ctx.platform->isVirtualPath(ctx.from) && !isInSameVirtualRoot(ctx.from, path))
+            continue;
+
         // Require through the closest (deepest) anchor the module is a descendant of, e.g.
         // `require(Main.X.Y)`; fall through to the standard style computation when there is none.
         if (ctx.config->requireStyle == ImportRequireStyle::NearestAbsolute)

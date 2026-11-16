@@ -2273,6 +2273,66 @@ TEST_CASE_FIXTURE(Fixture, "require_through_project_enters_a_nested_data_model")
     CHECK(Luau::toString(requireType("waited")) == "number");
 }
 
+TEST_CASE_FIXTURE(Fixture, "find_first_ancestor_reaches_a_nested_data_model_by_name")
+{
+    loadSourcemap(NESTED_DATA_MODEL_SOURCEMAP);
+
+    Luau::ModuleInfo context{"game/ReplicatedStorage/Shared"};
+    Luau::AstStatBlock* block = parse(R"(
+        local _ = node:FindFirstAncestor("DataModel")
+    )");
+    REQUIRE(block);
+    auto local = block->body.data[0]->as<Luau::AstStatLocal>();
+    REQUIRE(local);
+
+    auto resolved = workspace.platform->resolveModule(&context, local->values.data[0], workspace.limits);
+    REQUIRE(resolved);
+    CHECK_EQ(resolved->name, "game");
+}
+
+TEST_CASE_FIXTURE(Fixture, "relative_string_require_from_the_project_enters_a_nested_data_model")
+{
+    // The game's files live under `game/`, not under the project path the require walks
+    loadSourcemap(R"(
+        {
+            "name": "my-game-dev",
+            "className": "Folder",
+            "children": [
+                {
+                    "name": "Source",
+                    "className": "Folder",
+                    "children": [
+                        {"name": "Runner", "className": "ModuleScript", "filePaths": ["tools/Runner.luau"]},
+                        {
+                            "name": "DataModel",
+                            "className": "DataModel",
+                            "children": [
+                                {
+                                    "name": "ReplicatedStorage",
+                                    "className": "ReplicatedStorage",
+                                    "children": [{"name": "Shared", "className": "ModuleScript", "filePaths": ["game/Shared.luau"]}]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    )");
+
+    newDocument("game/Shared.luau", "return { value = 1 }");
+    auto uri = newDocument("tools/Runner.luau", R"(
+        --!strict
+        local value = require("./DataModel/ReplicatedStorage/Shared").value
+    )");
+
+    auto moduleName = workspace.fileResolver.getModuleName(uri);
+    auto result = workspace.frontend.check(moduleName);
+
+    LUAU_LSP_REQUIRE_NO_ERRORS(result);
+    CHECK(Luau::toString(requireType(getModule(moduleName), "value")) == "number");
+}
+
 TEST_CASE_FIXTURE(Fixture, "project_reaches_past_a_nested_data_model_from_the_same_directory")
 {
     client->globalConfig.diagnostics.strictDatamodelTypes = true;
