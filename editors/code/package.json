@@ -1,5 +1,5 @@
 {
-  "name": "luau-lsp-fork",
+  "name": "luau-lsp",
   "displayName": "Luau Language Server (Fork)",
   "description": "An extended Luau language server with fork-specific language and tooling support.",
   "author": "JohnnyMorganz",
