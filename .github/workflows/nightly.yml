@@ -18,6 +18,11 @@ jobs:
             artifact-name: luau-lsp-win64
             code-target: [win32-x64]
             crash-reporting: true
+          - os: windows-11-arm
+            artifact-name: luau-lsp-windows-arm64
+            code-target: [win32-arm64]
+            cmake-args: -A ARM64
+            crash-reporting: true
           - os: ubuntu-22.04
             artifact-name: luau-lsp-linux
             code-target: [linux-x64]
@@ -55,7 +60,7 @@ jobs:
       - name: Build Server
         run: |
           mkdir build && cd build
-          cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DLSP_STATIC_CRT:BOOL=ON -DLUAU_ENABLE_TIME_TRACE:BOOL=ON -DLSP_BUILD_WITH_SENTRY:BOOL=${{ matrix.crash-reporting }} ..
+          cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DLSP_STATIC_CRT:BOOL=ON -DLUAU_ENABLE_TIME_TRACE:BOOL=ON -DLSP_BUILD_WITH_SENTRY:BOOL=${{ matrix.crash-reporting }} ${{ matrix.cmake-args }} ..
           cmake --build . --config RelWithDebInfo --target Luau.LanguageServer.CLI -j 3
 
       - name: (MacOS) Verify universal build
@@ -75,7 +80,7 @@ jobs:
         run: |
           mkdir -p ./dist
           mkdir -p editors/code/bin
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [ "${{ runner.os }}" = "Windows" ]; then
             cp build/RelWithDebInfo/luau-lsp.exe editors/code/bin/server.exe
             cp build/RelWithDebInfo/luau-lsp.pdb editors/code/bin/server.pdb
           else
@@ -87,7 +92,7 @@ jobs:
         shell: bash
         if: matrix.crash-reporting == true
         run: |
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [ "${{ runner.os }}" = "Windows" ]; then
               cp build/RelWithDebInfo/crashpad_handler.exe editors/code/bin/crashpad_handler.exe
           else
               cp build/crashpad_handler editors/code/bin/crashpad_handler
@@ -113,7 +118,7 @@ jobs:
         shell: bash
         run: |
           mkdir staging
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [ "${{ runner.os }}" = "Windows" ]; then
             cp "build/RelWithDebInfo/luau-lsp.exe" staging/
             cd staging
             7z a ../dist/server.zip *
@@ -127,8 +132,13 @@ jobs:
         working-directory: editors/code
 
       - name: Package Extension
+        shell: bash
         working-directory: editors/code
-        run: npx --no-install vsce package -o "../../dist/${{ matrix.artifact-name }}.vsix"
+        run: |
+          for target in ${{ join(matrix.code-target, ' ') }}; do
+            asset=$(node prepare-release.mjs --asset-name "$target")
+            npx --no-install vsce package --target "$target" -o "../../dist/$asset"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -2,6 +2,15 @@ import { copyFile, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+export function vsixAssetName(target) {
+  const match = /^(darwin|linux|win32)-(arm64|x64)$/.exec(target);
+  if (!match || match[0] !== target) {
+    throw new Error("A supported VS Code platform target is required.");
+  }
+  const names = { darwin: "macos", linux: "linux", win32: "windows" };
+  return `luau-lsp-${names[match[1]]}-${match[2]}.vsix`;
+}
+
 export function marketplaceVersion(version) {
   const match =
     /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-horse\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(
@@ -86,9 +95,13 @@ if (
   process.argv[1] &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 ) {
-  await prepareRelease(
-    dirname(fileURLToPath(import.meta.url)),
-    process.env.GITHUB_REPOSITORY,
-    process.argv.includes("--check"),
-  );
+  if (process.argv[2] === "--asset-name") {
+    console.log(vsixAssetName(process.argv[3]));
+  } else {
+    await prepareRelease(
+      dirname(fileURLToPath(import.meta.url)),
+      process.env.GITHUB_REPOSITORY,
+      process.argv.includes("--check"),
+    );
+  }
 }

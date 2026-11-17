@@ -6,7 +6,7 @@
   "publisher": "horsenuggets",
   "license": "MIT",
   "icon": "assets/icon.png",
-  "version": "2.1.16",
+  "version": "2.1.17",
   "engines": {
     "vscode": "^1.82.0"
   },
@@ -916,5 +916,13 @@
     "express": "^5.2.1",
     "undici": "^8.10.2",
     "vscode-languageclient": "^9.0.1"
+  },
+  "homepage": "https://github.com/horsenuggets/luau-lsp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/horsenuggets/luau-lsp"
+  },
+  "bugs": {
+    "url": "https://github.com/horsenuggets/luau-lsp/issues"
   }
 }

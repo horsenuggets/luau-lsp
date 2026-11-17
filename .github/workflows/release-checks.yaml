@@ -127,6 +127,10 @@ jobs:
           - name: Windows
             os: windows-latest
 
+          - name: Windows ARM64
+            os: windows-11-arm
+            cmake-args: -A ARM64
+
           - name: Linux x86_64
             os: ubuntu-22.04
 
@@ -145,7 +149,7 @@ jobs:
       - name: Build
         run: |
           mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLSP_STATIC_CRT:BOOL=ON
+          cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DLSP_STATIC_CRT:BOOL=ON ${{ matrix.cmake-args }}
           cmake --build . --config RelWithDebInfo --target Luau.LanguageServer.CLI -j 3
 
   build-extension-test:
