@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+## `1.70.1-horse.1.17`
+
 ### Added
 
 - Added native Windows ARM64 server archives and `win32-arm64` VS Code extensions to
