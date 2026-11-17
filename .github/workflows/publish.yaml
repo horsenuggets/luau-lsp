@@ -138,15 +138,16 @@ jobs:
         working-directory: editors/code
         run: |
           for target in ${{ matrix.code-targets }}; do
-            npx --no-install vsce package --target "$target" -o "../../dist/luau-lsp-$target.vsix"
+            asset=$(node prepare-release.mjs --asset-name "$target")
+            npx --no-install vsce package --target "$target" -o "../../dist/$asset"
           done
 
       - name: Verify server is bundled
         shell: bash
         run: |
-          for target in ${{ matrix.code-targets }}; do
-            unzip -l "dist/luau-lsp-$target.vsix" | grep -E "extension/bin/server(\.exe)?$" \
-              || { echo "::error::The \"$target\" VSIX does not contain the server binary."; exit 1; }
+          for asset in dist/*.vsix; do
+            unzip -l "$asset" | grep -E "extension/bin/server(\.exe)?$" \
+              || { echo "::error::The \"$asset\" VSIX does not contain the server binary."; exit 1; }
           done
 
       - name: Upload artifact

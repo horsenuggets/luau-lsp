@@ -21,7 +21,6 @@ jobs:
           - os: windows-11-arm
             artifact-name: luau-lsp-windows-arm64
             code-target: [win32-arm64]
-            code-args: --target win32-arm64
             cmake-args: -A ARM64
             crash-reporting: true
           - os: ubuntu-22.04
@@ -133,8 +132,13 @@ jobs:
         working-directory: editors/code
 
       - name: Package Extension
+        shell: bash
         working-directory: editors/code
-        run: npx --no-install vsce package ${{ matrix.code-args }} -o "../../dist/${{ matrix.artifact-name }}.vsix"
+        run: |
+          for target in ${{ join(matrix.code-target, ' ') }}; do
+            asset=$(node prepare-release.mjs --asset-name "$target")
+            npx --no-install vsce package --target "$target" -o "../../dist/$asset"
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

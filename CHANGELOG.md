@@ -11,6 +11,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Added native Windows ARM64 server archives and `win32-arm64` VS Code extensions to
   release and nightly builds, with native build, test, and extension CI coverage.
 
+### Changed
+
+- Named VSIX release files with `macos` and `windows` instead of `darwin` and `win32`,
+  while retaining VS Code's platform identifiers inside each package.
+
 ## `1.70.1-horse.1.16`
 
 ### Changed
