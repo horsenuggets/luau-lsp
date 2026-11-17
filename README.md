@@ -8,27 +8,27 @@ preserved.
 
 ## Getting Started
 
-Search for **Luau Language Server (Fork)** in the VS Code Extensions view. Install
-this fork and disable other Luau language server extensions in the same workspace to
-avoid duplicate diagnostics and competing language features. The Marketplace package
-name is `luau-lsp-fork`; native commands and `luau-lsp` settings are unchanged.
+Download the platform-specific `.vsix` installer from the latest GitHub release and
+install it with `code --install-extension <file>.vsix`. The extension ID is
+`horsenuggets.luau-lsp`. Disable other Luau language server extensions in the same
+workspace to avoid duplicate diagnostics and competing language features. Native
+commands and `luau-lsp` settings are unchanged. If `horsenuggets.luau-lsp-fork` is
+installed, uninstall it.
 
-For another editor, see [Getting Started for Language Server Clients](editors/README.md).
-Platform-specific `.vsix` installers are also available with each GitHub release.
 Each installer includes the language server, so a separate server installation is not
-required.
+required. For another editor, see
+[Getting Started for Language Server Clients](editors/README.md).
 
 ### Extension Versions
 
-Marketplace packages use `2.X.Y`, where `X.Y` comes from the native release's
+Extension packages use `2.X.Y`, where `X.Y` comes from the native release's
 `-horse.X.Y` fork counter. The independent fork counter keeps extension updates
 increasing even when the upstream version changes. Native versions and GitHub tags
 retain the complete upstream and fork version.
 
 Release packaging obtains repository and support links from `GITHUB_REPOSITORY`.
 Run `npm run prepare-release` in `editors/code/` with that variable set before
-packaging locally. No personal publishing token is needed by the release workflow;
-it uses a publisher Trusted Publishing policy for its GitHub Actions identity.
+packaging locally.
 
 ### For General Users
 
