@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Renamed the VS Code extension from `luau-lsp-fork` to `luau-lsp`, so its ID is now
   `horsenuggets.luau-lsp`. Uninstall `horsenuggets.luau-lsp-fork` after installing it.
+- Removed the VS Code Marketplace publishing job. The extension is installed from GitHub
+  release assets only.
 
 ## `1.70.1-horse.1.15`
 
