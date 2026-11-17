@@ -8,6 +8,7 @@ import {
   prepareRelease,
   releaseLockfile,
   releaseManifest,
+  vsixAssetName,
 } from "./prepare-release.mjs";
 
 const compare = (left, right) => {
@@ -15,6 +16,31 @@ const compare = (left, right) => {
   const b = right.split(".").map(Number);
   return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
 };
+
+test("VSIX filenames use canonical OS names without changing platform targets", () => {
+  for (const [target, filename] of [
+    ["darwin-arm64", "luau-lsp-macos-arm64.vsix"],
+    ["darwin-x64", "luau-lsp-macos-x64.vsix"],
+    ["linux-arm64", "luau-lsp-linux-arm64.vsix"],
+    ["linux-x64", "luau-lsp-linux-x64.vsix"],
+    ["win32-arm64", "luau-lsp-windows-arm64.vsix"],
+    ["win32-x64", "luau-lsp-windows-x64.vsix"],
+  ]) {
+    assert.equal(vsixAssetName(target), filename);
+    assert.equal(vsixAssetName(target), vsixAssetName(target));
+  }
+  for (const target of [
+    undefined,
+    "",
+    "macos-arm64",
+    "windows-arm64",
+    "win32-ia32",
+    "darwin-arm64\n",
+    "../win32-x64",
+  ]) {
+    assert.throws(() => vsixAssetName(target), /supported VS Code platform/);
+  }
+});
 
 test("fork counters determine a stable numeric Marketplace version", () => {
   for (const upstream of ["0.1.0", "1.70.1", "2.0.0"]) {

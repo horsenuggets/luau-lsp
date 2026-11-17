@@ -18,7 +18,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-22.04, macos-latest]
+        os: [windows-latest, windows-11-arm, ubuntu-22.04, macos-latest]
+        include:
+          - os: windows-11-arm
+            cmake-args: -A ARM64
     name: Build Server (${{matrix.os}})
     runs-on: ${{matrix.os}}
     steps:
@@ -30,8 +33,28 @@ jobs:
       - name: Build Tool
         run: |
           mkdir build && cd build
-          cmake .. -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DLSP_STATIC_CRT:BOOL=ON
+          cmake .. -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DLSP_STATIC_CRT:BOOL=ON ${{ matrix.cmake-args }}
           cmake --build . --target Luau.LanguageServer.CLI -j 3
+
+      - name: Verify native Windows ARM64 server
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          $binary = 'build/Debug/luau-lsp.exe'
+          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $binary))
+          $peOffset = [BitConverter]::ToInt32($bytes, 0x3c)
+          $machine = [BitConverter]::ToUInt16($bytes, $peOffset + 4)
+          if ($machine -ne 0xAA64) { throw 'The server is not a native ARM64 executable.' }
+          & $binary --version
+          if ($LASTEXITCODE -ne 0) { throw 'The ARM64 server failed to start.' }
+
+      - name: Upload native Windows ARM64 server
+        if: matrix.os == 'windows-11-arm'
+        uses: actions/upload-artifact@v4
+        with:
+          name: luau-lsp-windows-arm64-ci
+          path: build/Debug/luau-lsp.exe
+          if-no-files-found: error
 
   run_tests:
     strategy:
@@ -40,6 +63,9 @@ jobs:
         include:
           - os: windows-latest
             test-path: ./build/Debug/Luau.LanguageServer.Test
+          - os: windows-11-arm
+            test-path: ./build/Debug/Luau.LanguageServer.Test
+            cmake-args: -A ARM64
           - os: ubuntu-22.04
             test-path: ./build/Luau.LanguageServer.Test
           - os: macos-latest
@@ -54,17 +80,17 @@ jobs:
           submodules: recursive
 
       - name: Build Tests (ASAN)
-        if: matrix.os != 'windows-latest'
+        if: runner.os != 'Windows'
         run: |
           mkdir build && cd build
           cmake .. -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DLSP_BUILD_ASAN:BOOL=ON
           cmake --build . --target Luau.LanguageServer.Test -j 3
 
       - name: Build Tests
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         run: |
           mkdir build && cd build
-          cmake .. -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          cmake .. -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON ${{ matrix.cmake-args }}
           cmake --build . --target Luau.LanguageServer.Test -j 3
 
       - name: Run Tests (Old Solver)
@@ -129,7 +155,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-22.04, windows-latest]
+        os: [macos-latest, ubuntu-22.04, windows-latest, windows-11-arm]
+        include:
+          - os: windows-11-arm
+            code-args: --target win32-arm64
     name: Test Extension (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     steps:
@@ -149,7 +178,7 @@ jobs:
         if: runner.os != 'Linux'
       - run: npm run prepare-release
         working-directory: editors/code
-      - run: npx --no-install vsce package
+      - run: npx --no-install vsce package ${{ matrix.code-args }}
         working-directory: editors/code
 
   selene:
