@@ -55,6 +55,11 @@ jobs:
             artifact-name: luau-lsp-win64
             code-targets: win32-x64
 
+          - os: windows-11-arm
+            artifact-name: luau-lsp-windows-arm64
+            code-targets: win32-arm64
+            cmake-args: -A ARM64
+
           - os: ubuntu-22.04
             artifact-name: luau-lsp-linux-x86_64
             code-targets: linux-x64
@@ -77,7 +82,7 @@ jobs:
       - name: Build server
         run: |
           mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DLSP_STATIC_CRT:BOOL=ON
+          cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON -DLSP_STATIC_CRT:BOOL=ON ${{ matrix.cmake-args }}
           cmake --build . --config RelWithDebInfo --target Luau.LanguageServer.CLI -j 3
 
       - name: (macOS) Strip debug symbols
@@ -92,7 +97,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p staging dist
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [ "${{ runner.os }}" = "Windows" ]; then
             cp "build/RelWithDebInfo/luau-lsp.exe" staging/
             cd staging
             7z a ../dist/luau-lsp.zip *
@@ -108,7 +113,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p editors/code/bin
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+          if [ "${{ runner.os }}" = "Windows" ]; then
             cp "build/RelWithDebInfo/luau-lsp.exe" editors/code/bin/server.exe
           else
             cp "build/luau-lsp" editors/code/bin/server
