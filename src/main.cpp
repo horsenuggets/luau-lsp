@@ -230,9 +230,9 @@ int main(int argc, char** argv)
         .default_value(false)
         .implicit_value(true);
     analyze_command.add_argument("--formatter")
-        .help("output analysis errors in a particular format")
+        .help("output diagnostics in a particular format, or jsonl diagnostics and progress")
         .default_value(std::string("default"))
-        .choices("default", "plain", "gnu");
+        .choices("default", "plain", "gnu", "jsonl");
     analyze_command.add_argument("--no-strict-dm-types")
         .help("disable strict DataModel types in type-checking")
         .default_value(false)
