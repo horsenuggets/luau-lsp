@@ -435,13 +435,17 @@ TEST_CASE("jsonl_syntax_errors_are_completed_source_diagnostics")
 TEST_CASE("jsonl_missing_source_does_not_complete")
 {
     TempDir t("analyze_cli_jsonl_missing");
+    const auto path = t.write_child("missing.luau", "return 1");
+    const auto files = getFilesToAnalyze({path});
+    REQUIRE_EQ(files.size(), 1);
+    REQUIRE(std::filesystem::remove(path));
     CliClient client;
     initCliClient(client);
     WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
     setupCliWorkspace(client, workspace);
     std::ostringstream output;
     AnalysisJsonlReporter reporter(output);
-    CHECK_FALSE(analyzeFilesJsonl(workspace, {t.path() + "/missing.luau"}, reporter));
+    CHECK_FALSE(analyzeFilesJsonl(workspace, files, reporter));
     const auto events = jsonlEvents(output);
     REQUIRE_EQ(events.size(), 1);
     CHECK_EQ(events.front().at("state"), "started");

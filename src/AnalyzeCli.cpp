@@ -205,13 +205,14 @@ bool reportTypeErrorJsonl(WorkspaceFolder& workspace, const Luau::TypeError& err
 bool analyzeFileJsonl(WorkspaceFolder& workspace, const std::string& path, AnalysisJsonlReporter& reporter)
 {
     const auto name = workspace.fileResolver.getModuleName(Uri::file(path));
-    Luau::FrontendOptions options{/* retainFullTypeGraphs: */ false, /* forAutocomplete: */ false, /* runLintChecks: */ true};
-    auto result = workspace.frontend.check(name, options);
+    workspace.frontend.parse(name);
     if (!workspace.frontend.getSourceModule(name))
     {
         std::cerr << "Error opening " << name << "\n";
         return false;
     }
+    Luau::FrontendOptions options{/* retainFullTypeGraphs: */ false, /* forAutocomplete: */ false, /* runLintChecks: */ true};
+    auto result = workspace.frontend.check(name, options);
 
     for (const auto& error : result.errors)
     {
