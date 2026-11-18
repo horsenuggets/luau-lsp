@@ -9,7 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 
 - Added `analyze --formatter=jsonl` with versioned, streamed diagnostic, progress, and
-  completion records, including effective severity and UTF-16 source ranges.
+  completion records, including effective severity and UTF-16 source ranges. This mode
+  requires targets and diagnostic sources to remain within the working directory.
 
 ### Fixed
 
@@ -17,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   order no longer change the target sequence.
 - Kept structured diagnostic module references relative to the analysis root without
   rewriting user-authored string types.
+- Prevented internal compiler failures from being reported as completed JSONL analysis.
+- Preserved source mappings for plugin-transformed CLI diagnostics.
 
 ### Known Issues
 

@@ -304,6 +304,67 @@ TEST_CASE("jsonl_module_names_are_relative_without_rewriting_type_literals")
     CHECK(literalEvents.front().at("message").get<std::string>().find(literalPath) != std::string::npos);
 }
 
+TEST_CASE("jsonl_propagates_internal_compiler_errors_without_completing_targets")
+{
+    TempDir t("analyze_cli_jsonl_internal_failure");
+    const auto path = t.write_child("test.luau", "return 1");
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    workspace.frontend.prepareModuleScope = [](const auto&, const auto&, bool)
+    {
+        throw Luau::InternalCompilerError("Injected analysis failure.");
+    };
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    CHECK_THROWS_AS(analyzeFilesJsonl(workspace, {path}, reporter), Luau::InternalCompilerError);
+    CHECK(workspace.frontend.getSourceModule(workspace.fileResolver.getModuleName(Uri::file(path))) != nullptr);
+    const auto events = jsonlEvents(output);
+    REQUIRE_EQ(events.size(), 1);
+    CHECK_EQ(events.front().at("event"), "progress");
+    CHECK_EQ(events.front().at("state"), "started");
+    CHECK_EQ(events.front().at("completed"), 0);
+}
+
+TEST_CASE("jsonl_maps_transformed_type_syntax_and_lint_ranges_to_original_source")
+{
+    TempDir t("analyze_cli_jsonl_source_mapping");
+    const auto plugin = t.write_child("header.luau", R"(
+return {
+    transformSource = function(source, context)
+        return {{ startLine = 1, startColumn = 1, endLine = 1, endColumn = 1, newText = "-- Header\n" }}
+    end
+}
+)");
+    const auto typed = t.write_child("typed.luau", "--!strict\nlocal unused = 1\nlocal value: number = 'invalid'\nreturn value\n");
+    const auto syntax = t.write_child("syntax.luau", "--!strict\nlocal value = (\n");
+    for (const auto& path : {typed, syntax})
+    {
+        std::vector<json> original;
+        for (const bool transformed : {false, true})
+        {
+            CliClient client;
+            initCliClient(client);
+            client.globalConfig.plugins.enabled = transformed;
+            client.globalConfig.plugins.paths = {plugin};
+            Luau::Config config;
+            config.enabledLint.enableWarning(Luau::LintWarning::Code_LocalUnused);
+            WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), config);
+            setupCliWorkspace(client, workspace);
+            std::ostringstream output;
+            AnalysisJsonlReporter reporter(output);
+            CHECK(analyzeFileJsonl(workspace, path, reporter));
+            const auto events = jsonlEvents(output);
+            REQUIRE_FALSE(events.empty());
+            if (transformed)
+                CHECK_EQ(events, original);
+            else
+                original = events;
+        }
+    }
+}
+
 TEST_CASE("jsonl_preserves_effective_lint_severity")
 {
     for (const bool fatal : {false, true})

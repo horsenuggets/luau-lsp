@@ -139,6 +139,10 @@ TextDocumentPtr WorkspaceFileResolver::getOrCreateTextDocumentFromModuleName(con
     if (auto document = getTextDocumentFromModuleName(name))
         return TextDocumentPtr(document);
 
+    auto transformed = pluginDocuments.find(getUri(name));
+    if (transformed != pluginDocuments.end())
+        return TextDocumentPtr(transformed->second.get());
+
     if (auto filePath = platform->resolveToRealPath(name))
         if (auto source = readSource(name))
             return TextDocumentPtr(*filePath, "luau", source->source);
@@ -160,7 +164,15 @@ std::optional<Luau::SourceCode> WorkspaceFileResolver::readSource(const Luau::Mo
     if (auto source = platform->readSourceCode(name, uri))
     {
         if (auto transformed = applyPluginTransformation(*source, uri, name))
-            return Luau::SourceCode{std::move(transformed->transformedSource), sourceType};
+        {
+            auto document = std::make_unique<Luau::LanguageServer::Plugin::PluginTextDocument>(uri, "luau", 0,
+                std::move(*source), std::move(transformed->transformedSource),
+                Luau::LanguageServer::Plugin::SourceMapping{std::move(transformed->edits)});
+            auto text = document->getText();
+            pluginDocuments[uri] = std::move(document);
+            return Luau::SourceCode{std::move(text), sourceType};
+        }
+        pluginDocuments.erase(uri);
         return Luau::SourceCode{*source, sourceType};
     }
 

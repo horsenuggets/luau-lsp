@@ -205,7 +205,8 @@ bool reportTypeErrorJsonl(WorkspaceFolder& workspace, const Luau::TypeError& err
 bool analyzeFileJsonl(WorkspaceFolder& workspace, const std::string& path, AnalysisJsonlReporter& reporter)
 {
     const auto name = workspace.fileResolver.getModuleName(Uri::file(path));
-    auto result = workspace.checkSimple(name, nullptr);
+    Luau::FrontendOptions options{/* retainFullTypeGraphs: */ false, /* forAutocomplete: */ false, /* runLintChecks: */ true};
+    auto result = workspace.frontend.check(name, options);
     if (!workspace.frontend.getSourceModule(name))
     {
         std::cerr << "Error opening " << name << "\n";
