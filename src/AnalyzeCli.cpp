@@ -10,6 +10,7 @@
 #include "Luau/PrettyPrinter.h"
 #include "LuauFileUtils.hpp"
 #include "LSP/LuauExt.hpp"
+#include "LSP/Utils.hpp"
 #include "RobloxTypes.hpp"
 #include "LuneTypes.hpp"
 #include <algorithm>
@@ -325,8 +326,20 @@ std::vector<std::string> getFilesToAnalyze(const std::vector<std::string>& paths
         }
     }
     std::sort(files.begin(), files.end(), [](const auto& left, const auto& right)
-        { return Uri::file(left).path < Uri::file(right).path; });
-    files.erase(std::unique(files.begin(), files.end()), files.end());
+        {
+            const auto leftPath = Uri::file(left).path;
+            const auto rightPath = Uri::file(right).path;
+#if defined(_WIN32) || defined(__APPLE__)
+            const auto leftKey = toLower(leftPath);
+            const auto rightKey = toLower(rightPath);
+            if (leftKey != rightKey)
+                return leftKey < rightKey;
+#endif
+            return leftPath < rightPath;
+        });
+    files.erase(std::unique(files.begin(), files.end(), [](const auto& left, const auto& right)
+                    { return Uri::file(left) == Uri::file(right); }),
+        files.end());
     return files;
 }
 

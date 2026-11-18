@@ -137,6 +137,21 @@ TEST_CASE("getFilesToAnalyze_sorts_and_deduplicates_overlapping_inputs")
     CHECK_THROWS_AS(getFilesToAnalyze({t.path() + "/missing.luau"}), std::runtime_error);
 }
 
+TEST_CASE("getFilesToAnalyze_uses_platform_uri_equality_for_case_variants")
+{
+    TempDir t("analyze_cli_case_variants");
+    const auto upper = Uri::file(t.write_child("Source/A.luau", "return 1")).fsPath();
+    const auto other = Uri::file(t.write_child("Source/B.luau", "return 2")).fsPath();
+    const auto lower = Uri::file(t.write_child("source/a.luau", "return 1")).fsPath();
+#if defined(_WIN32) || defined(__APPLE__)
+    const std::vector<std::string> expected{upper, other};
+#else
+    const std::vector<std::string> expected{upper, other, lower};
+#endif
+    CHECK_EQ(getFilesToAnalyze({lower, t.path() + "/Source", other, t.path() + "/source", upper}), expected);
+    CHECK_EQ(getFilesToAnalyze({upper, t.path() + "/source", t.path() + "/Source", lower, other}), expected);
+}
+
 static std::vector<json> jsonlEvents(const std::ostringstream& output)
 {
     std::istringstream input(output.str());
