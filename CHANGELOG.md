@@ -21,7 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Prevented internal compiler failures from being reported as completed JSONL analysis.
 - Preserved source mappings for plugin-transformed CLI diagnostics and retained document
   snapshots safely across reparsing.
-- Rejected incomplete directory discovery instead of reporting partial analysis as complete.
+- Rejected incomplete directory discovery in analysis and `require-graph` instead of
+  reporting partial results as complete.
 - Enforced URI authority boundaries and platform-aware workspace prefixes in JSONL output.
 
 ### Known Issues
