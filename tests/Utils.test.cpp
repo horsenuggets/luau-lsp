@@ -1,8 +1,17 @@
 #include "doctest.h"
+#include "Analyze/AnalyzeCli.hpp"
 #include "LSP/Utils.hpp"
 #include "LuauFileUtils.hpp"
 #include "Platform/RobloxPlatform.hpp"
 #include "TempDir.h"
+
+#include <cerrno>
+#include <set>
+#include <stdexcept>
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 TEST_SUITE_BEGIN("UtilsTest");
 
@@ -167,6 +176,107 @@ TEST_CASE("traverseDirectory can handle non-ASCII characters in path")
 
     CHECK_EQ(paths.size(), 1);
 }
+
+TEST_CASE("traverseDirectory succeeds for readable empty directories")
+{
+    TempDir directory("traverse_empty");
+    size_t callbacks = 0;
+    auto callback = [&](const std::string&) { ++callbacks; };
+
+    CHECK(Luau::FileUtils::traverseDirectory(directory.path(), callback));
+    CHECK(Luau::FileUtils::traverseDirectoryRecursive(directory.path(), callback));
+    CHECK_EQ(callbacks, 0);
+}
+
+TEST_CASE("traverseDirectory preserves shallow and recursive traversal")
+{
+    TempDir directory("traverse_contents");
+    auto file = directory.touch_child("file.luau");
+    auto nestedFile = directory.touch_child("nested/child.luau");
+    auto nestedDirectory = directory.path() + "/nested";
+    std::filesystem::create_directory(directory.path() + "/empty");
+
+    std::set<std::string> paths;
+    auto callback = [&](const std::string& path)
+    {
+        paths.insert(path);
+        // Callback errors must not be mistaken for enumeration errors.
+        errno = EACCES;
+    };
+
+    CHECK(Luau::FileUtils::traverseDirectory(directory.path(), callback));
+    CHECK((paths == std::set<std::string>{file, nestedDirectory, directory.path() + "/empty"}));
+
+    paths.clear();
+    CHECK(Luau::FileUtils::traverseDirectoryRecursive(directory.path(), callback));
+    CHECK((paths == std::set<std::string>{file, nestedFile}));
+}
+
+TEST_CASE("traverseDirectory rejects missing and non-directory paths")
+{
+    TempDir directory("traverse_invalid");
+    auto file = directory.touch_child("file.luau");
+    size_t callbacks = 0;
+    auto callback = [&](const std::string&) { ++callbacks; };
+
+    CHECK_FALSE(Luau::FileUtils::traverseDirectory(directory.path() + "/missing", callback));
+    CHECK_FALSE(Luau::FileUtils::traverseDirectoryRecursive(directory.path() + "/missing", callback));
+    CHECK_FALSE(Luau::FileUtils::traverseDirectory(file, callback));
+    CHECK_FALSE(Luau::FileUtils::traverseDirectoryRecursive(file, callback));
+    CHECK_EQ(callbacks, 0);
+}
+
+#ifndef _WIN32
+TEST_CASE("traverseDirectory skips symbolic links")
+{
+    TempDir directory("traverse_symlinks");
+    auto file = directory.touch_child("nested/file.luau");
+    std::filesystem::create_directory_symlink(directory.path(), directory.path() + "/nested/cycle");
+    std::filesystem::create_symlink(file, directory.path() + "/linked-file");
+    std::filesystem::create_symlink(directory.path() + "/missing", directory.path() + "/broken-link");
+
+    std::set<std::string> paths;
+    CHECK(Luau::FileUtils::traverseDirectoryRecursive(directory.path(), [&](const std::string& path) { paths.insert(path); }));
+    CHECK(paths == std::set<std::string>{file});
+}
+
+TEST_CASE("traverseDirectory reports unreadable nested directories")
+{
+    if (geteuid() == 0)
+    {
+        MESSAGE("Permission denial cannot be tested reliably when running as root.");
+        return;
+    }
+
+    TempDir directory("traverse_unreadable");
+    directory.touch_child("nested/file.luau");
+    auto nested = directory.path() + "/nested";
+    auto permissions = std::filesystem::status(nested).permissions();
+    std::filesystem::permissions(nested, std::filesystem::perms::none);
+
+    auto callback = [](const std::string&) {};
+    bool shallowSuccess = Luau::FileUtils::traverseDirectory(directory.path(), callback);
+    bool recursiveSuccess = Luau::FileUtils::traverseDirectoryRecursive(directory.path(), callback);
+    bool directSuccess = Luau::FileUtils::traverseDirectory(nested, callback);
+    std::string discoveryError;
+    try
+    {
+        getFilesToAnalyze({directory.path()});
+    }
+    catch (const std::runtime_error& error)
+    {
+        discoveryError = error.what();
+    }
+    std::error_code restoreError;
+    std::filesystem::permissions(nested, permissions, restoreError);
+
+    REQUIRE_FALSE(restoreError);
+    CHECK(shallowSuccess);
+    CHECK_FALSE(recursiveSuccess);
+    CHECK_FALSE(directSuccess);
+    CHECK(discoveryError.find("Cannot enumerate analysis directory") != std::string::npos);
+}
+#endif
 
 TEST_CASE("writeFileIfModified writes content to a new file")
 {

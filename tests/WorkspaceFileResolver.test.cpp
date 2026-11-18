@@ -9,6 +9,84 @@
 
 TEST_SUITE_BEGIN("WorkspaceFileResolverTests");
 
+TEST_CASE("TextDocumentPtr retains shared snapshots through moves")
+{
+    auto document = std::make_shared<TextDocument>(Uri::parse("file:///snapshot.luau"), "luau", 0, "return 1");
+    std::weak_ptr<const TextDocument> observed = document;
+    {
+        TextDocumentPtr first(document);
+        document.reset();
+        TextDocumentPtr moved(std::move(first));
+        CHECK_FALSE(first);
+        TextDocumentPtr assigned(nullptr);
+        assigned = std::move(moved);
+        CHECK_FALSE(moved);
+        CHECK_FALSE(observed.expired());
+        CHECK_EQ(assigned->getText(), "return 1");
+    }
+    CHECK(observed.expired());
+}
+
+TEST_CASE_FIXTURE(Fixture, "unmanaged plugin snapshots survive reparsing and diagnostics use fresh mappings")
+{
+    switchToStandardPlatform();
+    const auto plugin = tempDir.write_child("header.luau", R"(
+return {
+    transformSource = function(source, context)
+        return {{ startLine = 1, startColumn = 1, endLine = 1, endColumn = 1, newText = "-- Header\n" }}
+    end
+}
+)");
+    client->globalConfig.plugins.enabled = true;
+    client->globalConfig.plugins.paths = {plugin};
+    workspace.setupWithConfiguration(client->globalConfig);
+    const auto path = tempDir.write_child("test.luau", "--!strict\nreturn 1\n");
+    const auto uri = Uri::file(path);
+    const auto name = workspace.fileResolver.getModuleName(uri);
+    auto snapshot = workspace.fileResolver.getOrCreateTextDocumentFromModuleName(name);
+    REQUIRE(snapshot);
+    const auto original = snapshot->getText();
+    workspace.checkSimple(name, nullptr);
+    tempDir.write_child("test.luau", "--!strict\n\n\nlocal value: number = 'invalid'\nreturn value\n");
+    workspace.frontend.markDirty(name);
+    const auto report = workspace.documentDiagnostics({lsp::TextDocumentIdentifier{uri}}, nullptr, true);
+    REQUIRE_FALSE(report.items.empty());
+    for (const auto& diagnostic : report.items)
+        CHECK_EQ(diagnostic.range.start.line, 3);
+    CHECK_EQ(snapshot->getText(), original);
+    REQUIRE(std::filesystem::remove(path));
+    workspace.frontend.markDirty(name);
+    const auto missing = workspace.documentDiagnostics({lsp::TextDocumentIdentifier{uri}}, nullptr, true);
+    CHECK(missing.items.empty());
+    workspace.fileResolver.clearPluginDocuments();
+    CHECK_EQ(snapshot->getText(), original);
+}
+
+TEST_CASE_FIXTURE(Fixture, "non_file_plugin_snapshots_retain_ownership_after_cache_invalidation")
+{
+    switchToStandardPlatform();
+    const auto plugin = tempDir.write_child("untitled_header.luau", R"(
+return {
+    transformSource = function(source, context)
+        return {{ startLine = 1, startColumn = 1, endLine = 1, endColumn = 1, newText = "-- Header\n" }}
+    end
+}
+)");
+    client->globalConfig.plugins.enabled = true;
+    client->globalConfig.plugins.paths = {plugin};
+    workspace.setupWithConfiguration(client->globalConfig);
+    const auto uri = Uri::parse("untitled:Untitled-1");
+    workspace.fileResolver.managedFiles.emplace(uri, TextDocument(uri, "luau", 1, "return 1"));
+    auto snapshot = workspace.fileResolver.getOrCreateTextDocumentFromModuleName(uri.toString());
+    REQUIRE(snapshot);
+    CHECK_EQ(snapshot->uri(), uri);
+    workspace.fileResolver.invalidatePluginDocument(uri);
+    CHECK_EQ(snapshot->getText(), "-- Header\nreturn 1");
+    workspace.fileResolver.getTextDocument(uri);
+    workspace.fileResolver.clearPluginDocuments();
+    CHECK_EQ(snapshot->getText(), "-- Header\nreturn 1");
+}
+
 TEST_CASE("resolveModule handles LocalPlayer PlayerScripts")
 {
     Luau::TypeCheckLimits limits;

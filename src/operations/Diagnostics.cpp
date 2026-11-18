@@ -42,6 +42,12 @@ lsp::DocumentDiagnosticReport WorkspaceFolder::documentDiagnostics(
                                                        : TextDocumentPtr(fileResolver.getTextDocument(params.textDocument.uri));
     if (!textDocument)
         return report; // Bail early with empty report - file was likely closed
+    if (allowUnmanagedFiles)
+    {
+        frontend.parse(moduleName);
+        if (!frontend.getSourceModule(moduleName))
+            return report;
+    }
 
     // Check the module
     // In the new solver, we end up calling `checkStrict` (retain type graphs), because documentation diagnostics is typically
@@ -58,6 +64,12 @@ lsp::DocumentDiagnosticReport WorkspaceFolder::documentDiagnostics(
     // Bail early with an empty report - it is likely that the file was closed
     if (!frontend.getSourceModule(moduleName))
         return report;
+    if (allowUnmanagedFiles)
+    {
+        textDocument = fileResolver.getOrCreateTextDocumentFromModuleName(moduleName);
+        if (!textDocument)
+            return report;
+    }
 
     auto config = client->getConfiguration(rootUri);
 

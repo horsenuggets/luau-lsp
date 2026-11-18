@@ -304,6 +304,48 @@ TEST_CASE("jsonl_module_names_are_relative_without_rewriting_type_literals")
     CHECK(literalEvents.front().at("message").get<std::string>().find(literalPath) != std::string::npos);
 }
 
+TEST_CASE("jsonl_rejects_sources_with_a_different_uri_scheme_or_authority")
+{
+    TempDir t("analyze_cli_jsonl_foreign_uri");
+    const auto path = t.write_child("test.luau", "return 1");
+    const auto root = Uri::file(t.path());
+    CliClient client;
+    initCliClient(client);
+    for (const auto& foreignRoot : {Uri("file", "remote", root.path), Uri("https", "", root.path)})
+    {
+        WorkspaceFolder workspace(&client, "CLI", foreignRoot, std::nullopt);
+        std::ostringstream output;
+        AnalysisJsonlReporter reporter(output);
+        CHECK_THROWS_AS(analyzeFilesJsonl(workspace, {path}, reporter), std::runtime_error);
+        CHECK(output.str().empty());
+    }
+}
+
+TEST_CASE("jsonl_module_labels_follow_platform_path_case_rules")
+{
+    TempDir t("analyze_cli_jsonl_module_case");
+    const auto path = t.write_child("CaseRoot/MixedCase.luau", "return 1");
+#if defined(_WIN32) || defined(__APPLE__)
+    const auto root = Uri::file(t.path() + "/CASEROOT");
+#else
+    const auto root = Uri::file(t.path() + "/CaseRoot");
+#endif
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", root, std::nullopt);
+    setupCliWorkspace(client, workspace);
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    const Luau::TypeError error{{{0, 0}, {0, 1}}, path, Luau::ModuleHasCyclicDependency{{path}}};
+    CHECK(reportTypeErrorJsonl(workspace, error, reporter));
+    const auto events = jsonlEvents(output);
+    REQUIRE_EQ(events.size(), 1);
+    CHECK_EQ(events.front().at("path"), "MixedCase.luau");
+    const auto message = events.front().at("message").get<std::string>();
+    CHECK(message.find("CaseRoot") == std::string::npos);
+    CHECK(message.find("MixedCase.luau") != std::string::npos);
+}
+
 TEST_CASE("jsonl_propagates_internal_compiler_errors_without_completing_targets")
 {
     TempDir t("analyze_cli_jsonl_internal_failure");

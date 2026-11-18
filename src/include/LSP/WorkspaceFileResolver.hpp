@@ -25,10 +25,17 @@ struct TextDocumentPtr
 private:
     const TextDocument* document = nullptr;
     bool isTemporary = false;
+    std::shared_ptr<const TextDocument> retainedDocument;
 
 public:
     explicit TextDocumentPtr(const TextDocument* document)
         : document(document)
+    {
+    }
+
+    explicit TextDocumentPtr(std::shared_ptr<const TextDocument> document)
+        : document(document.get())
+        , retainedDocument(std::move(document))
     {
     }
 
@@ -65,6 +72,7 @@ public:
     TextDocumentPtr(TextDocumentPtr&& other) noexcept
         : document(std::exchange(other.document, nullptr))
         , isTemporary(std::exchange(other.isTemporary, false))
+        , retainedDocument(std::move(other.retainedDocument))
     {
     }
 
@@ -72,6 +80,7 @@ public:
     {
         std::swap(document, other.document);
         std::swap(isTemporary, other.isTemporary);
+        std::swap(retainedDocument, other.retainedDocument);
         return *this;
     }
 };
@@ -84,7 +93,7 @@ private:
     mutable std::unordered_map<Uri, Luau::Config, UriHash> configCache{};
 
     // Cache for plugin-transformed documents
-    mutable std::unordered_map<Uri, std::unique_ptr<Luau::LanguageServer::Plugin::PluginTextDocument>, UriHash> pluginDocuments{};
+    mutable std::unordered_map<Uri, std::shared_ptr<Luau::LanguageServer::Plugin::PluginTextDocument>, UriHash> pluginDocuments{};
 
 public:
     Luau::Config defaultConfig;
