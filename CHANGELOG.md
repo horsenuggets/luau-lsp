@@ -4,7 +4,27 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## Unreleased
+## `1.70.1-horse.2.0`
+
+### Added
+
+- Added `analyze --formatter=jsonl` with versioned, streamed diagnostic, progress, and
+  completion records, including effective severity and UTF-16 source ranges. This mode
+  requires targets and diagnostic sources to remain within the working directory.
+
+### Fixed
+
+- Sorted and deduplicated analysis targets so overlapping inputs and filesystem traversal
+  order no longer change the target sequence.
+- Kept structured diagnostic module references relative to the analysis root without
+  rewriting user-authored string types.
+- Prevented internal compiler failures from being reported as completed JSONL analysis.
+- Preserved source mappings for plugin-transformed CLI diagnostics.
+
+### Known Issues
+
+- Unchanged new-solver analyses can still render different diagnostic messages. Stable
+  target ordering alone does not make strict diagnostic baselines reproducible.
 
 ## `1.70.1-horse.1.17`
 
