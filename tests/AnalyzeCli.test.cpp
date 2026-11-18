@@ -15,6 +15,7 @@
 #include <cctype>
 #include <fstream>
 #include <iterator>
+#include <sstream>
 
 TEST_SUITE_BEGIN("AnalyzeCli");
 
@@ -110,6 +111,386 @@ TEST_CASE("getFilesToAnalyze_still_matches_file_if_it_was_explicitly_provided")
     setupCliWorkspace(client, workspace);
 
     CHECK_EQ(getFilesToAnalyze({fileA}, &workspace), std::vector<std::string>{fileA});
+}
+
+TEST_CASE("cli_setup_errors_are_distinguished_from_warnings")
+{
+    CliClient client;
+    client.sendLogMessage(lsp::MessageType::Warning, "A nonfatal warning.");
+    CHECK_FALSE(client.hasErrorLog);
+    client.sendWindowMessage(lsp::MessageType::Error, "A failed setup operation.");
+    CHECK(client.hasErrorLog);
+}
+
+TEST_CASE("getFilesToAnalyze_sorts_and_deduplicates_overlapping_inputs")
+{
+    TempDir t("analyze_cli_ordered_files");
+    auto fileZ = Uri::file(t.write_child("src/z.luau", "")).fsPath();
+    auto fileA = Uri::file(t.write_child("src/a.luau", "")).fsPath();
+    auto fileNested = Uri::file(t.write_child("src/nested/b.lua", "")).fsPath();
+    auto fileAfterNested = Uri::file(t.write_child("src/nestedZ.lua", "")).fsPath();
+    t.write_child("src/not_source.txt", "");
+    const std::vector<std::string> expected{fileA, fileNested, fileAfterNested, fileZ};
+    CHECK_EQ(
+        getFilesToAnalyze({fileZ, t.path() + "/src", fileA, t.path() + "/src/nested", t.path() + "/src/nested/../a.luau"}), expected);
+    CHECK_EQ(getFilesToAnalyze({t.path() + "/src/nested", fileA, t.path() + "/src", fileZ}), expected);
+    CHECK_THROWS_AS(getFilesToAnalyze({t.path() + "/missing.luau"}), std::runtime_error);
+}
+
+TEST_CASE("getFilesToAnalyze_uses_platform_uri_equality_for_case_variants")
+{
+    TempDir t("analyze_cli_case_variants");
+    const auto upper = Uri::file(t.write_child("Source/A.luau", "return 1")).fsPath();
+    const auto other = Uri::file(t.write_child("Source/B.luau", "return 2")).fsPath();
+    const auto lower = Uri::file(t.write_child("source/a.luau", "return 1")).fsPath();
+#if defined(_WIN32) || defined(__APPLE__)
+    const std::vector<std::string> expected{upper, other};
+#else
+    const std::vector<std::string> expected{upper, other, lower};
+#endif
+    CHECK_EQ(getFilesToAnalyze({lower, t.path() + "/Source", other, t.path() + "/source", upper}), expected);
+    CHECK_EQ(getFilesToAnalyze({upper, t.path() + "/source", t.path() + "/Source", lower, other}), expected);
+}
+
+static std::vector<json> jsonlEvents(const std::ostringstream& output)
+{
+    std::istringstream input(output.str());
+    std::vector<json> events;
+    for (std::string line; std::getline(input, line);)
+    {
+        auto event = json::parse(line);
+        REQUIRE_EQ(event.at("schemaVersion"), 1);
+        events.push_back(std::move(event));
+    }
+    return events;
+}
+
+TEST_CASE("jsonl_flushes_each_record_and_only_completes_finished_analysis")
+{
+    struct FlushedBuffer : std::stringbuf
+    {
+        int flushes = 0;
+        int sync() override
+        {
+            flushes += 1;
+            return 0;
+        }
+    } buffer;
+    std::ostream output(&buffer);
+    AnalysisJsonlReporter reporter(output);
+    reporter.start("test-version", "standard", "new");
+    reporter.progress("discovery", "started", 0, std::nullopt);
+    CHECK_EQ(buffer.flushes, 2);
+    CHECK_THROWS_AS(reporter.finish(0, 1), std::logic_error);
+    CHECK_EQ(buffer.flushes, 2);
+    reporter.finish(0, 0);
+    CHECK_EQ(buffer.flushes, 3);
+    CHECK(buffer.str().find("\"complete\":true") != std::string::npos);
+}
+
+TEST_CASE("jsonl_deduplicates_exact_diagnostics_without_collapsing_different_findings")
+{
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    lsp::Diagnostic diagnostic;
+    diagnostic.code = 1000;
+    diagnostic.severity = lsp::DiagnosticSeverity::Error;
+    diagnostic.range = {{0, 0}, {0, 1}};
+    diagnostic.message = "First message\nwith a second line";
+    CHECK(reporter.diagnostic("Source/Example.luau", "TypeError", diagnostic));
+    CHECK_FALSE(reporter.diagnostic("Source/Example.luau", "TypeError", diagnostic));
+    diagnostic.message = "Another error at the same location";
+    CHECK(reporter.diagnostic("Source/Example.luau", "TypeError", diagnostic));
+    diagnostic.code = 1001;
+    CHECK(reporter.diagnostic("Source/Example.luau", "TypeError", diagnostic));
+    diagnostic.severity = lsp::DiagnosticSeverity::Warning;
+    CHECK(reporter.diagnostic("Source/Example.luau", "TypeError", diagnostic));
+    diagnostic.range.end.character = 2;
+    CHECK(reporter.diagnostic("Source/Example.luau", "TypeError", diagnostic));
+    CHECK_EQ(reporter.errorCount(), 3);
+    CHECK_EQ(reporter.warningCount(), 2);
+    reporter.finish(1, 1);
+    const auto events = jsonlEvents(output);
+    REQUIRE_EQ(events.size(), 6);
+    CHECK_EQ(events.front().at("message"), "First message\nwith a second line");
+    CHECK_EQ(events.back().at("diagnosticCount"), 5);
+    CHECK_EQ(events.back().at("errors"), 3);
+    CHECK_EQ(events.back().at("warnings"), 2);
+}
+
+TEST_CASE("jsonl_reports_progress_and_deduplicated_import_errors")
+{
+    TempDir t("analyze_cli_jsonl_imports");
+    const auto dependency = t.write_child("shared.luau", "--!strict\nreturn ('text' :: number)");
+    const auto fileA = t.write_child("a.luau", "--!strict\nreturn require('./shared')");
+    const auto fileB = t.write_child("b.luau", "--!strict\nreturn require('./shared')");
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    reporter.start("test-version", "standard", FFlag::LuauSolverV2 ? "new" : "old");
+    CHECK(analyzeFilesJsonl(workspace, {fileA, fileB, dependency}, reporter));
+    reporter.finish(3, 3);
+    const auto events = jsonlEvents(output);
+    REQUIRE_EQ(events.front().at("event"), "start");
+    CHECK_EQ(events.front().at("positionEncoding"), "utf-16");
+    size_t started = 0;
+    size_t completed = 0;
+    size_t diagnostics = 0;
+    for (const auto& event : events)
+    {
+        if (event.at("event") == "progress")
+        {
+            CHECK_EQ(event.at("phase"), "checking");
+            CHECK_EQ(event.at("total"), 3);
+            CHECK(event.at("path").get<std::string>().find(t.path()) == std::string::npos);
+            if (event.at("state") == "started")
+            {
+                CHECK_EQ(event.at("completed"), completed);
+                started += 1;
+            }
+            else
+            {
+                completed += 1;
+                CHECK_EQ(event.at("completed"), completed);
+            }
+        }
+        else if (event.at("event") == "diagnostic")
+        {
+            diagnostics += 1;
+            CHECK_EQ(event.at("path"), "shared.luau");
+            CHECK_EQ(event.at("severity"), "error");
+            CHECK(event.at("code").is_number_integer());
+        }
+    }
+    CHECK_EQ(started, 3);
+    CHECK_EQ(completed, 3);
+    CHECK_EQ(diagnostics, 1);
+    CHECK_EQ(events.back().at("event"), "summary");
+    CHECK_EQ(events.back().at("filesCompleted"), 3);
+    CHECK_EQ(events.back().at("errors"), 1);
+}
+
+TEST_CASE("jsonl_module_names_are_relative_without_rewriting_type_literals")
+{
+    TempDir t("analyze_cli_jsonl_module_names");
+    const auto fileA = t.write_child("a.luau", "--!strict\nreturn require('./b')");
+    const auto fileB = t.write_child("b.luau", "--!strict\nreturn require('./a')");
+    const auto literalPath = Uri::file(t.path()).path;
+    auto displayRoot = Uri::file(t.path()).fsPath();
+    std::replace(displayRoot.begin(), displayRoot.end(), '\\', '/');
+    const auto literalFile = t.write_child("literal.luau", "--!strict\nlocal value: 'expected' = " + json(literalPath).dump() + "\nreturn value");
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    std::ostringstream cycles;
+    AnalysisJsonlReporter cycleReporter(cycles);
+    const Luau::TypeError cycleError{{{0, 0}, {0, 1}}, fileA, Luau::ModuleHasCyclicDependency{{fileA, fileB}}};
+    CHECK(reportTypeErrorJsonl(workspace, cycleError, cycleReporter));
+    const auto cycleEvents = jsonlEvents(cycles);
+    REQUIRE_EQ(cycleEvents.size(), 1);
+    const auto cycleMessage = cycleEvents.front().at("message").get<std::string>();
+    CHECK(cycleMessage.find(displayRoot) == std::string::npos);
+    CHECK(cycleMessage.find("a.luau") != std::string::npos);
+    CHECK(cycleMessage.find("b.luau") != std::string::npos);
+    std::ostringstream literals;
+    AnalysisJsonlReporter literalReporter(literals);
+    CHECK(analyzeFileJsonl(workspace, literalFile, literalReporter));
+    const auto literalEvents = jsonlEvents(literals);
+    REQUIRE_EQ(literalEvents.size(), 1);
+    CHECK(literalEvents.front().at("message").get<std::string>().find(literalPath) != std::string::npos);
+}
+
+TEST_CASE("jsonl_rejects_sources_with_a_different_uri_scheme_or_authority")
+{
+    TempDir t("analyze_cli_jsonl_foreign_uri");
+    const auto path = t.write_child("test.luau", "return 1");
+    const auto root = Uri::file(t.path());
+    CliClient client;
+    initCliClient(client);
+    for (const auto& foreignRoot : {Uri("file", "remote", root.path), Uri("https", "", root.path)})
+    {
+        WorkspaceFolder workspace(&client, "CLI", foreignRoot, std::nullopt);
+        std::ostringstream output;
+        AnalysisJsonlReporter reporter(output);
+        CHECK_THROWS_AS(analyzeFilesJsonl(workspace, {path}, reporter), std::runtime_error);
+        CHECK(output.str().empty());
+    }
+}
+
+TEST_CASE("jsonl_module_labels_follow_platform_path_case_rules")
+{
+    TempDir t("analyze_cli_jsonl_module_case");
+    const auto path = t.write_child("CaseRoot/MixedCase.luau", "return 1");
+#if defined(_WIN32) || defined(__APPLE__)
+    const auto root = Uri::file(t.path() + "/CASEROOT");
+#else
+    const auto root = Uri::file(t.path() + "/CaseRoot");
+#endif
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", root, std::nullopt);
+    setupCliWorkspace(client, workspace);
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    const Luau::TypeError error{{{0, 0}, {0, 1}}, path, Luau::ModuleHasCyclicDependency{{path}}};
+    CHECK(reportTypeErrorJsonl(workspace, error, reporter));
+    const auto events = jsonlEvents(output);
+    REQUIRE_EQ(events.size(), 1);
+    CHECK_EQ(events.front().at("path"), "MixedCase.luau");
+    const auto message = events.front().at("message").get<std::string>();
+    CHECK(message.find("CaseRoot") == std::string::npos);
+    CHECK(message.find("MixedCase.luau") != std::string::npos);
+}
+
+TEST_CASE("jsonl_propagates_internal_compiler_errors_without_completing_targets")
+{
+    TempDir t("analyze_cli_jsonl_internal_failure");
+    const auto path = t.write_child("test.luau", "return 1");
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    workspace.frontend.prepareModuleScope = [](const auto&, const auto&, bool)
+    {
+        throw Luau::InternalCompilerError("Injected analysis failure.");
+    };
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    CHECK_THROWS_AS(analyzeFilesJsonl(workspace, {path}, reporter), Luau::InternalCompilerError);
+    CHECK(workspace.frontend.getSourceModule(workspace.fileResolver.getModuleName(Uri::file(path))) != nullptr);
+    const auto events = jsonlEvents(output);
+    REQUIRE_EQ(events.size(), 1);
+    CHECK_EQ(events.front().at("event"), "progress");
+    CHECK_EQ(events.front().at("state"), "started");
+    CHECK_EQ(events.front().at("completed"), 0);
+}
+
+TEST_CASE("jsonl_maps_transformed_type_syntax_and_lint_ranges_to_original_source")
+{
+    TempDir t("analyze_cli_jsonl_source_mapping");
+    const auto plugin = t.write_child("header.luau", R"(
+return {
+    transformSource = function(source, context)
+        return {{ startLine = 1, startColumn = 1, endLine = 1, endColumn = 1, newText = "-- Header\n" }}
+    end
+}
+)");
+    const auto typed = t.write_child("typed.luau", "--!strict\nlocal unused = 1\nlocal value: number = 'invalid'\nreturn value\n");
+    const auto syntax = t.write_child("syntax.luau", "--!strict\nlocal value = (\n");
+    for (const auto& path : {typed, syntax})
+    {
+        std::vector<json> original;
+        for (const bool transformed : {false, true})
+        {
+            CliClient client;
+            initCliClient(client);
+            client.globalConfig.plugins.enabled = transformed;
+            client.globalConfig.plugins.paths = {plugin};
+            Luau::Config config;
+            config.enabledLint.enableWarning(Luau::LintWarning::Code_LocalUnused);
+            WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), config);
+            setupCliWorkspace(client, workspace);
+            std::ostringstream output;
+            AnalysisJsonlReporter reporter(output);
+            CHECK(analyzeFileJsonl(workspace, path, reporter));
+            const auto events = jsonlEvents(output);
+            REQUIRE_FALSE(events.empty());
+            if (transformed)
+                CHECK_EQ(events, original);
+            else
+                original = events;
+        }
+    }
+}
+
+TEST_CASE("jsonl_preserves_effective_lint_severity")
+{
+    for (const bool fatal : {false, true})
+    {
+        CAPTURE(fatal);
+        TempDir t("analyze_cli_jsonl_lint");
+        const auto path = t.write_child("test.luau", "local unused = 1");
+        CliClient client;
+        initCliClient(client);
+        Luau::Config config;
+        config.enabledLint.enableWarning(Luau::LintWarning::Code_LocalUnused);
+        if (fatal)
+            config.fatalLint.enableWarning(Luau::LintWarning::Code_LocalUnused);
+        WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), config);
+        setupCliWorkspace(client, workspace);
+        std::ostringstream output;
+        AnalysisJsonlReporter reporter(output);
+        CHECK(analyzeFileJsonl(workspace, path, reporter));
+        const auto events = jsonlEvents(output);
+        REQUIRE_EQ(events.size(), 1);
+        CHECK_EQ(events.front().at("category"), "LocalUnused");
+        CHECK_EQ(events.front().at("severity"), fatal ? "error" : "warning");
+        CHECK_EQ(reporter.errorCount(), fatal ? 1 : 0);
+        CHECK_EQ(reporter.warningCount(), fatal ? 0 : 1);
+    }
+}
+
+TEST_CASE("jsonl_uses_utf16_source_ranges")
+{
+    TempDir t("analyze_cli_jsonl_unicode");
+    const std::string source = "--!strict\nlocal _ = '\xf0\x9f\x98\x80'; local _value: number = 'wrong'";
+    const auto path = t.write_child("test.luau", source);
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    CHECK(analyzeFileJsonl(workspace, path, reporter));
+    const auto events = jsonlEvents(output);
+    REQUIRE_EQ(events.size(), 1);
+    CHECK_EQ(events.front().at("range").at("start").at("line"), 1);
+    const auto checked = workspace.checkSimple(path, nullptr);
+    REQUIRE_EQ(checked.errors.size(), 1);
+    const auto byteOffset = checked.errors.front().location.begin.column;
+    REQUIRE_GT(byteOffset, 14);
+    CHECK_EQ(events.front().at("range").at("start").at("character"), byteOffset - 2);
+}
+
+TEST_CASE("jsonl_syntax_errors_are_completed_source_diagnostics")
+{
+    TempDir t("analyze_cli_jsonl_syntax");
+    const auto path = t.write_child("test.luau", "local value = {");
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    CHECK(analyzeFilesJsonl(workspace, {path}, reporter));
+    CHECK_GT(reporter.errorCount(), 0);
+    reporter.finish(1, 1);
+    const auto events = jsonlEvents(output);
+    CHECK_EQ(events[1].at("category"), "SyntaxError");
+    CHECK_EQ(events.back().at("complete"), true);
+}
+
+TEST_CASE("jsonl_missing_source_does_not_complete")
+{
+    TempDir t("analyze_cli_jsonl_missing");
+    const auto path = t.write_child("missing.luau", "return 1");
+    const auto files = getFilesToAnalyze({path});
+    REQUIRE_EQ(files.size(), 1);
+    REQUIRE(std::filesystem::remove(path));
+    CliClient client;
+    initCliClient(client);
+    WorkspaceFolder workspace(&client, "CLI", Uri::file(t.path()), std::nullopt);
+    setupCliWorkspace(client, workspace);
+    std::ostringstream output;
+    AnalysisJsonlReporter reporter(output);
+    CHECK_FALSE(analyzeFilesJsonl(workspace, files, reporter));
+    const auto events = jsonlEvents(output);
+    REQUIRE_EQ(events.size(), 1);
+    CHECK_EQ(events.front().at("state"), "started");
 }
 
 TEST_CASE("ignore_globs_from_settings_file_applied")

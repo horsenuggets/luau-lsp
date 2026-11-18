@@ -21,6 +21,7 @@ inline std::string getMessageTypeString(const lsp::MessageType& type)
 struct CliClient : public Client
 {
     mutable std::vector<std::pair<Uri, std::string>> diagnostics{};
+    mutable bool hasErrorLog = false;
 
     ClientConfiguration getConfiguration(const lsp::DocumentUri& uri) override
     {
@@ -29,6 +30,8 @@ struct CliClient : public Client
 
     void sendLogMessage(const lsp::MessageType& type, const std::string& message) const override
     {
+        if (type == lsp::MessageType::Error)
+            hasErrorLog = true;
         std::cerr << "[" << getMessageTypeString(type) << "] " << message << "\n";
     }
 

@@ -77,7 +77,7 @@ const TextDocument* WorkspaceFileResolver::getTextDocument(const lsp::DocumentUr
     if (!transformed)
         return original;
 
-    auto pluginDoc = std::make_unique<Luau::LanguageServer::Plugin::PluginTextDocument>(
+    auto pluginDoc = std::make_shared<Luau::LanguageServer::Plugin::PluginTextDocument>(
         original->uri(),
         original->languageId(),
         original->version(),
@@ -136,12 +136,21 @@ const TextDocument* WorkspaceFileResolver::getTextDocumentFromModuleName(const L
 
 TextDocumentPtr WorkspaceFileResolver::getOrCreateTextDocumentFromModuleName(const Luau::ModuleName& name)
 {
-    if (auto document = getTextDocumentFromModuleName(name))
+    auto document = getTextDocumentFromModuleName(name);
+    auto transformed = pluginDocuments.find(document ? document->uri() : getUri(name));
+    if (transformed != pluginDocuments.end() && (!document || document == transformed->second.get()))
+        return TextDocumentPtr(transformed->second);
+    if (document)
         return TextDocumentPtr(document);
 
     if (auto filePath = platform->resolveToRealPath(name))
         if (auto source = readSource(name))
+        {
+            transformed = pluginDocuments.find(getUri(name));
+            if (transformed != pluginDocuments.end())
+                return TextDocumentPtr(transformed->second);
             return TextDocumentPtr(*filePath, "luau", source->source);
+        }
 
     return TextDocumentPtr(nullptr);
 }
@@ -160,7 +169,15 @@ std::optional<Luau::SourceCode> WorkspaceFileResolver::readSource(const Luau::Mo
     if (auto source = platform->readSourceCode(name, uri))
     {
         if (auto transformed = applyPluginTransformation(*source, uri, name))
-            return Luau::SourceCode{std::move(transformed->transformedSource), sourceType};
+        {
+            auto document = std::make_shared<Luau::LanguageServer::Plugin::PluginTextDocument>(uri, "luau", 0,
+                std::move(*source), std::move(transformed->transformedSource),
+                Luau::LanguageServer::Plugin::SourceMapping{std::move(transformed->edits)});
+            auto text = document->getText();
+            pluginDocuments[uri] = std::move(document);
+            return Luau::SourceCode{std::move(text), sourceType};
+        }
+        pluginDocuments.erase(uri);
         return Luau::SourceCode{*source, sourceType};
     }
 
