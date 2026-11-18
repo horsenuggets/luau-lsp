@@ -62,6 +62,31 @@ return {
     CHECK_EQ(snapshot->getText(), original);
 }
 
+TEST_CASE_FIXTURE(Fixture, "non_file_plugin_snapshots_retain_ownership_after_cache_invalidation")
+{
+    switchToStandardPlatform();
+    const auto plugin = tempDir.write_child("untitled_header.luau", R"(
+return {
+    transformSource = function(source, context)
+        return {{ startLine = 1, startColumn = 1, endLine = 1, endColumn = 1, newText = "-- Header\n" }}
+    end
+}
+)");
+    client->globalConfig.plugins.enabled = true;
+    client->globalConfig.plugins.paths = {plugin};
+    workspace.setupWithConfiguration(client->globalConfig);
+    const auto uri = Uri::parse("untitled:Untitled-1");
+    workspace.fileResolver.managedFiles.emplace(uri, TextDocument(uri, "luau", 1, "return 1"));
+    auto snapshot = workspace.fileResolver.getOrCreateTextDocumentFromModuleName(uri.toString());
+    REQUIRE(snapshot);
+    CHECK_EQ(snapshot->uri(), uri);
+    workspace.fileResolver.invalidatePluginDocument(uri);
+    CHECK_EQ(snapshot->getText(), "-- Header\nreturn 1");
+    workspace.fileResolver.getTextDocument(uri);
+    workspace.fileResolver.clearPluginDocuments();
+    CHECK_EQ(snapshot->getText(), "-- Header\nreturn 1");
+}
+
 TEST_CASE("resolveModule handles LocalPlayer PlayerScripts")
 {
     Luau::TypeCheckLimits limits;

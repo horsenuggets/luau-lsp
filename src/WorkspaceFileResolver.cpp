@@ -137,7 +137,7 @@ const TextDocument* WorkspaceFileResolver::getTextDocumentFromModuleName(const L
 TextDocumentPtr WorkspaceFileResolver::getOrCreateTextDocumentFromModuleName(const Luau::ModuleName& name)
 {
     auto document = getTextDocumentFromModuleName(name);
-    auto transformed = pluginDocuments.find(getUri(name));
+    auto transformed = pluginDocuments.find(document ? document->uri() : getUri(name));
     if (transformed != pluginDocuments.end() && (!document || document == transformed->second.get()))
         return TextDocumentPtr(transformed->second);
     if (document)
