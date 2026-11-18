@@ -151,8 +151,10 @@ size_t AnalysisJsonlReporter::warningCount() const
 
 static std::string structuredPath(const WorkspaceFolder& workspace, const Uri& uri)
 {
+    if (uri.scheme != workspace.rootUri.scheme || uri.authority != workspace.rootUri.authority)
+        throw std::runtime_error("Cannot report a source file outside the analysis workspace.");
     const auto path = uri.lexicallyRelative(workspace.rootUri);
-    if (path.empty() || path == ".." || Luau::startsWith(path, "../"))
+    if (path.empty() || path.front() == '/' || path == ".." || Luau::startsWith(path, "../"))
         throw std::runtime_error("Cannot report a source file outside the analysis workspace.");
     return path;
 }
@@ -174,7 +176,12 @@ public:
             prefix += '/';
         std::replace(prefix.begin(), prefix.end(), '\\', '/');
         std::replace(label.begin(), label.end(), '\\', '/');
-        if (Luau::startsWith(label, prefix))
+#if defined(_WIN32) || defined(__APPLE__)
+        const bool withinRoot = Luau::startsWith(toLower(label), toLower(prefix));
+#else
+        const bool withinRoot = Luau::startsWith(label, prefix);
+#endif
+        if (withinRoot)
             label.erase(0, prefix.size());
         return label;
     }
@@ -310,17 +317,18 @@ std::vector<std::string> getFilesToAnalyze(const std::vector<std::string>& paths
 
         if (uri.isDirectory())
         {
-            Luau::FileUtils::traverseDirectoryRecursive(uri.fsPath(),
-                [&](const auto& path)
-                {
-                    auto uri = Uri::file(path);
-                    auto ext = uri.extension();
-                    if (ext == ".lua" || ext == ".luau")
+            if (!Luau::FileUtils::traverseDirectoryRecursive(uri.fsPath(),
+                    [&](const auto& path)
                     {
-                        if (!workspace || !workspace->isIgnoredFile(uri))
-                            files.push_back(uri.fsPath());
-                    }
-                });
+                        auto uri = Uri::file(path);
+                        auto ext = uri.extension();
+                        if (ext == ".lua" || ext == ".luau")
+                        {
+                            if (!workspace || !workspace->isIgnoredFile(uri))
+                                files.push_back(uri.fsPath());
+                        }
+                    }))
+                throw std::runtime_error("Cannot enumerate analysis directory " + uri.fsPath());
         }
         else
         {

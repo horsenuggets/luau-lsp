@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #endif
 
+#include <cerrno>
 #include <string.h>
 #include <string_view>
 
@@ -196,7 +197,23 @@ static bool traverseDirectoryRec(const std::wstring& path, const std::function<v
     HANDLE h = FindFirstFileW(query.c_str(), &data);
 
     if (h == INVALID_HANDLE_VALUE)
-        return false;
+    {
+        if (GetLastError() != ERROR_FILE_NOT_FOUND)
+            return false;
+
+        // An empty directory may have no matching entries. Verify it is readable.
+        DWORD attributes = GetFileAttributesW(path.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+            return false;
+
+        HANDLE directory = CreateFileW(path.c_str(), FILE_LIST_DIRECTORY, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (directory == INVALID_HANDLE_VALUE)
+            return false;
+
+        CloseHandle(directory);
+        return true;
+    }
 
     std::wstring buf;
 
@@ -213,7 +230,13 @@ static bool traverseDirectoryRec(const std::wstring& path, const std::function<v
             else if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 if (recursive)
-                    traverseDirectoryRec(buf, callback, recursive);
+                {
+                    if (!traverseDirectoryRec(buf, callback, recursive))
+                    {
+                        FindClose(h);
+                        return false;
+                    }
+                }
                 else
                     callback(toUtf8(buf));
             }
@@ -224,9 +247,10 @@ static bool traverseDirectoryRec(const std::wstring& path, const std::function<v
         }
     } while (FindNextFileW(h, &data));
 
+    bool success = GetLastError() == ERROR_NO_MORE_FILES;
     FindClose(h);
 
-    return true;
+    return success;
 }
 
 bool traverseDirectory(const std::string& path, const std::function<void(const std::string& name)>& callback)
@@ -241,16 +265,30 @@ bool traverseDirectoryRecursive(const std::string& path, const std::function<voi
 #else
 static bool traverseDirectoryRec(const std::string& path, const std::function<void(const std::string& name)>& callback, bool recursive)
 {
-    int fd = open(path.c_str(), O_DIRECTORY);
-    DIR* dir = fdopendir(fd);
-
-    if (!dir)
+    int fd = open(path.c_str(), O_RDONLY | O_DIRECTORY);
+    if (fd == -1)
         return false;
+
+    DIR* dir = fdopendir(fd);
+    if (!dir)
+    {
+        close(fd);
+        return false;
+    }
 
     std::string buf;
 
-    while (dirent* entry = readdir(dir))
+    while (true)
     {
+        errno = 0;
+        dirent* entry = readdir(dir);
+        if (!entry)
+        {
+            bool success = errno == 0;
+            closedir(dir);
+            return success;
+        }
+
         const dirent& data = *entry;
 
         if (strcmp(data.d_name, ".") != 0 && strcmp(data.d_name, "..") != 0)
@@ -268,18 +306,29 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
             {
                 struct stat st = {};
 #ifdef _ATFILE_SOURCE
-                fstatat(fd, data.d_name, &st, 0);
+                int result = fstatat(fd, data.d_name, &st, AT_SYMLINK_NOFOLLOW);
 #else
-                lstat(buf.c_str(), &st);
+                int result = lstat(buf.c_str(), &st);
 #endif
+                if (result != 0)
+                {
+                    closedir(dir);
+                    return false;
+                }
 
-                mode = st.st_mode;
+                mode = st.st_mode & S_IFMT;
             }
 
             if (mode == S_IFDIR)
             {
                 if (recursive)
-                    traverseDirectoryRec(buf, callback, recursive);
+                {
+                    if (!traverseDirectoryRec(buf, callback, recursive))
+                    {
+                        closedir(dir);
+                        return false;
+                    }
+                }
                 else
                     callback(buf);
             }
@@ -293,10 +342,6 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
             }
         }
     }
-
-    closedir(dir);
-
-    return true;
 }
 
 bool traverseDirectory(const std::string& path, const std::function<void(const std::string& name)>& callback)
