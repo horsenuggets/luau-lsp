@@ -232,8 +232,16 @@ int startRequireGraph(const argparse::ArgumentParser& program)
         return 1;
     }
 
-    if (auto filesArg = program.present<std::vector<std::string>>("files"))
-        files = getFilesToAnalyze(*filesArg);
+    try
+    {
+        if (auto filesArg = program.present<std::vector<std::string>>("files"))
+            files = getFilesToAnalyze(*filesArg);
+    }
+    catch (const std::exception& error)
+    {
+        fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
 
     if (files.empty())
     {

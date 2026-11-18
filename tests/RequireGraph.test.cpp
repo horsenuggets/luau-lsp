@@ -1,7 +1,20 @@
 #include "doctest.h"
 #include "Fixture.h"
+#include "LSP/RequireGraph.hpp"
 
 TEST_SUITE_BEGIN("RequireGraph");
+
+TEST_CASE("require_graph_returns_failure_when_discovery_cannot_complete")
+{
+    TempDir directory("require_graph_discovery_failure");
+    argparse::ArgumentParser program("require-graph");
+    program.add_argument("--sourcemap");
+    program.add_argument("--base-luaurc");
+    program.add_argument("--output-format").default_value(std::string("json"));
+    program.add_argument("files").remaining();
+    program.parse_args(std::vector<std::string>{"require-graph", directory.path() + "/missing"});
+    CHECK_EQ(startRequireGraph(program), 1);
+}
 
 struct DotFileOutput
 {
