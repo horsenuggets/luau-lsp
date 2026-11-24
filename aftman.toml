@@ -5,5 +5,5 @@
 [tools]
 rojo = "rojo-rbx/rojo@7.4.0-rc3"
 selene = "Kampfkarren/selene@0.26.1"
-stylua = "JohnnyMorganz/stylua@2.0.2"
+styluau = "horsenuggets/styluau@2.6.0-horse.1.0"
 lune = "lune-org/lune@0.8.9"

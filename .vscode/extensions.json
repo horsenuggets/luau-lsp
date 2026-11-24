@@ -6,6 +6,7 @@
     "dbaeumer.vscode-eslint",
     "hashicorp.hcl",
     "hashicorp.terraform",
+    "horsenuggets.styluau",
     "jkillian.custom-local-formatters"
   ]
 }

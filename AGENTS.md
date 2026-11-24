@@ -105,7 +105,7 @@ Located in `extern/` and `luau/`:
 - Uses Allman brace style (configured in `.clang-format`)
 - 4-space indentation, no tabs
 - 150 column limit
-- Luau code uses StyLua for formatting
+- Luau code uses StyLuau for formatting.
 
 ## Committing Changes
 

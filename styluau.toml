@@ -1,4 +1,5 @@
 syntax = "Luau"
+table_trailing_comma = true
 
 [sort_requires]
 enabled = true
