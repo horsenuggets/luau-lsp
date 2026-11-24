@@ -195,7 +195,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ok-nick/setup-aftman@v0.4.2
-      - run: stylua --check .
+      - name: Check StyLuau formatting
+        run: git ls-files -z -- '*.lua' '*.luau' ':!:tests/testdata/**' | xargs -0 styluau --check --respect-ignores
 
   build_plugin:
     name: Verify and Build Roblox Studio Plugin

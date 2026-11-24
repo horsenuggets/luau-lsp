@@ -120,7 +120,7 @@ They can be investigated at a later time:
 - [ ] Selection Range (not necessary - editor selection is sufficient)
 - [ ] Inline Value (applies for debuggers only)
 - [ ] Moniker
-- [ ] Formatting (see [stylua](https://github.com/JohnnyMorganz/StyLua))
+- [ ] Formatting (see [StyLuau](https://github.com/horsenuggets/styluau)).
 - [ ] Type Hierarchy (Luau currently does not provide any [public] ways to define type hierarchies)
 
 ## Crash Reporting

@@ -7,6 +7,12 @@
     "editor.insertSpaces": true,
     "editor.tabSize": 4
   },
+  "[lua]": {
+    "editor.defaultFormatter": "horsenuggets.styluau"
+  },
+  "[luau]": {
+    "editor.defaultFormatter": "horsenuggets.styluau"
+  },
   "[terraform]": {
     "editor.defaultFormatter": "jkillian.custom-local-formatters",
     "editor.detectIndentation": false,

@@ -1,0 +1,6 @@
+extern/
+luau/
+submodules/
+tests/testdata/
+*.d.lua
+*.d.luau
