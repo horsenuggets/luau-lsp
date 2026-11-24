@@ -65,5 +65,6 @@
         "terraform-vars"
       ]
     }
-  ]
+  ],
+  "styluau.targetReleaseVersion": "2.6.0-horse.1.0"
 }
